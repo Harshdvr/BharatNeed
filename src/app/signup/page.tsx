@@ -17,7 +17,7 @@ export default function SignUpPage() {
         const password = formData.get('password');
         console.log({ firstName, lastName, email }); // Don't log password
         // Implement Firebase authentication or other auth provider
-         alert("Sign up functionality not implemented yet.");
+         console.log("Sign up functionality not implemented yet."); // Replaced alert with console.log
     };
 
 
