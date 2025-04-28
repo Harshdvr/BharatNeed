@@ -4,12 +4,12 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, UserCircle, LogOut } from 'lucide-react';
+import { Search, UserCircle, LogOut, Settings, Heart, ListOrdered } from 'lucide-react'; // Added missing icons
 import LanguageSwitcher from '@/components/language-switcher';
-import LocationSelector from '@/components/location-selector'; // Import the new component
-import BharatNeedLogo from '@/components/bharat-need-logo'; // Import the logo component
+import LocationSelector from '@/components/location-selector';
+import BharatNeedLogo from '@/components/bharat-need-logo';
 import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
-import { auth } from '@/lib/firebase/clientApp'; // Import auth instance
+import { auth } from '@/lib/firebase/clientApp'; // Import auth instance (can be null)
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -21,13 +21,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Skeleton } from '../ui/skeleton'; // Import Skeleton for loading state
 
 
 export default function Header() {
-  const [user, loading, error] = useAuthState(auth); // Get auth state
+  // IMPORTANT: Check if auth is initialized before using the hook
+  const [user, loading, error] = auth ? useAuthState(auth) : [null, true, null]; // Default to loading if auth is null
   const { toast } = useToast();
 
   const handleLogout = async () => {
+     if (!auth) {
+        toast({ title: 'Error', description: 'Authentication service not available.', variant: 'destructive' });
+        return;
+     }
     try {
       await signOut(auth);
       toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
@@ -37,6 +43,12 @@ export default function Header() {
       toast({ title: 'Logout Failed', description: error.message, variant: 'destructive' });
     }
   };
+
+  // Handle case where auth failed to initialize
+   if (error) {
+     console.error("Firebase Auth Hook Error:", error);
+     // Optionally render an error indicator in the header
+   }
 
 
   return (
@@ -63,14 +75,14 @@ export default function Header() {
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <LanguageSwitcher />
           {loading ? (
-             // Optional: Show a loading indicator while checking auth state
-             <div className="h-8 w-8 animate-pulse rounded-full bg-muted"></div>
+             // Show skeleton loaders while auth state is loading
+             <Skeleton className="h-9 w-9 rounded-full" />
           ) : user ? (
              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                         <Avatar className="h-9 w-9">
-                         {/* TODO: Replace with actual user avatar */}
+                         {/* Use user's photoURL or fallback */}
                         <AvatarImage src={user.photoURL || `https://avatar.vercel.sh/${user.uid}.png`} alt={user.displayName || user.email || 'User'} />
                         <AvatarFallback>{user.displayName?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                         </Avatar>
@@ -94,22 +106,19 @@ export default function Header() {
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
                        <Link href="/my-ads">
-                            {/* Placeholder for My Ads icon */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                            <ListOrdered className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
                             My Ads
                        </Link>
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
                         <Link href="/favorites">
-                            {/* Placeholder for Favorites icon */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                            <Heart className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
                             Favorites
                        </Link>
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
                          <Link href="/settings">
-                             {/* Placeholder for Settings icon */}
-                             <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                             <Settings className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
                              Settings
                          </Link>
                     </DropdownMenuItem>
@@ -121,6 +130,7 @@ export default function Header() {
                 </DropdownMenuContent>
             </DropdownMenu>
           ) : (
+            // Show Login/Signup buttons if not loading and no user
             <>
               <Button variant="ghost" size="sm" asChild>
                  <Link href="/login">Login</Link>
@@ -130,7 +140,7 @@ export default function Header() {
               </Button>
             </>
           )}
-           {error && <span className='text-destructive text-xs'>Auth Error</span>}
+           {error && <span className='text-destructive text-xs ml-2'>!</span>}
         </div>
       </div>
 
