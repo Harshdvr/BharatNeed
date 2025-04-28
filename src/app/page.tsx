@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import LoadingSpinner from "@/components/loading-spinner";
 import { PlusCircle, MapPin, Clock, Tag, IndianRupee } from 'lucide-react';
 import Link from "next/link";
 
@@ -29,7 +30,7 @@ const getCategoryIcon = (category: string): React.ElementType => {
 
 export default function Home() {
   return (
-    <div className="relative min-h-full">
+    <div className="relative min-h-full"><LoadingSpinner />
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
           Welcome to Bharat Need
@@ -37,6 +38,18 @@ export default function Home() {
         <p className="mt-2 text-lg text-muted-foreground">
           Connecting needs and offers across India. Post what you need, offer what you have.
         </p>
+        {/* Button to Post Need/Offer */}
+         <Button
+            variant="default"
+            size="lg"
+            className="mt-6 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md"
+            asChild
+          >
+            <Link href="/post-need">
+              <PlusCircle className="mr-2 h-5 w-5" />
+              Post Your Need or Offer
+            </Link>
+          </Button>
       </div>
 
       {/* Category Filters Placeholder */}
@@ -92,7 +105,8 @@ export default function Home() {
         })}
       </div>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button - Removed */}
+      {/*
       <Button
         variant="default"
         size="lg"
@@ -105,6 +119,7 @@ export default function Home() {
            <span className="sr-only">Post Your Need or Offer</span>
          </Link>
       </Button>
+       */}
     </div>
   );
 }
