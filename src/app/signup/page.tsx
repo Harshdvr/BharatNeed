@@ -17,8 +17,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { useState, useEffect } from 'react'; // Import useEffect
-import { auth } from '@/lib/firebase/clientApp'; // Import auth instance
+import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase/clientApp';
 import {
   createUserWithEmailAndPassword,
   signInWithPhoneNumber,
@@ -51,6 +51,7 @@ type SignUpType = 'email' | 'phone';
 // Use window object carefully for global state like this, refs or state management is better
 declare global {
     interface Window {
+        grecaptcha?: any; // Added for direct grecaptcha access if needed
         signUpRecaptchaVerifier?: RecaptchaVerifier;
         signUpConfirmationResult?: ConfirmationResult;
     }
@@ -175,8 +176,8 @@ export default function SignUpPage() {
             try {
                 console.log("Attempting to send OTP for signup to:", values.phone);
                 const confirmationResult = await signInWithPhoneNumber(auth, values.phone!, appVerifier);
-                window.signUpConfirmationResult = confirmationResult;
-                setOtpSent(true);
+                window.signUpConfirmationResult = confirmationResult; // Store globally (or in state/ref)
+                setOtpSent(true); // Update state to show OTP field
                  toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
                  console.log("Signup OTP sent, confirmation result stored.");
             } catch (error: any) {
@@ -184,11 +185,15 @@ export default function SignUpPage() {
                 console.error('Error Code:', error.code);
                 console.error('Error Message:', error.message);
                  // Reset reCAPTCHA on error
-                 window.signUpRecaptchaVerifier?.clear();
-                 window.signUpRecaptchaVerifier = undefined;
+                 window.signUpRecaptchaVerifier?.render().then(widgetId => {
+                    window.grecaptcha?.reset(widgetId); // Use grecaptcha directly if available
+                    window.signUpRecaptchaVerifier?.clear(); // Also clear Firebase wrapper state
+                    window.signUpRecaptchaVerifier = undefined;
+                 }).catch(resetError => console.warn("Error resetting reCAPTCHA:", resetError));
+
                 toast({
                     title: 'Failed to Send OTP',
-                    description: `Error: ${error.code || error.message}. Check the number or try again.`,
+                    description: `Error: ${error.message || error.code || 'Unknown error'}. Check the number or try again.`,
                     variant: 'destructive',
                 });
             } finally {
@@ -285,7 +290,8 @@ export default function SignUpPage() {
             </Tabs>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
+             {/* Use key prop to force re-render on type change, ensures schema updates */}
+            <form key={signUpType} onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
                <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}

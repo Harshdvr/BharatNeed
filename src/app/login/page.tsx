@@ -17,8 +17,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { useState, useEffect } from 'react'; // Import useEffect
-import { auth } from '@/lib/firebase/clientApp'; // Import auth instance
+import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase/clientApp';
 import {
   signInWithEmailAndPassword,
   signInWithPhoneNumber,
@@ -89,11 +89,6 @@ export default function LoginPage() {
         const container = document.getElementById(recaptchaContainerId);
         if (!container) {
             console.error("Recaptcha container not found:", recaptchaContainerId);
-            // Attempt to create the container dynamically if absolutely necessary, though it should exist
-            // const newContainer = document.createElement('div');
-            // newContainer.id = recaptchaContainerId;
-            // document.body.appendChild(newContainer);
-            // container = newContainer;
              toast({ title: "Error", description: "Login system initialization failed. Please refresh.", variant: "destructive" });
              return null; // Indicate failure
         }
@@ -107,6 +102,8 @@ export default function LoginPage() {
              } catch (error) {
                  console.warn("Re-rendering existing verifier failed, creating new one.", error);
                  // Proceed to create a new one if re-render fails
+                  window.loginRecaptchaVerifier.clear();
+                  window.loginRecaptchaVerifier = undefined; // Clear the reference too
              }
          }
 
@@ -117,14 +114,13 @@ export default function LoginPage() {
                 'callback': (response: any) => {
                     console.log("reCAPTCHA verified for login (callback)");
                     // Invisible reCAPTCHA resolves the promise from signInWithPhoneNumber directly
-                    // This callback might not be strictly necessary for invisible type unless debugging
                 },
                 'expired-callback': () => {
                     toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
                     window.loginRecaptchaVerifier?.clear(); // Clear the expired verifier
                     window.loginRecaptchaVerifier = undefined;
-                    setupRecaptcha(); // Attempt to re-setup immediately might cause issues, maybe reset state instead
                     setOtpSent(false); // Allow user to retry sending OTP
+                    // Re-setup might be needed but handle potential race conditions
                 }
             });
             window.loginRecaptchaVerifier = verifier;
@@ -166,7 +162,7 @@ export default function LoginPage() {
     } else if (loginType === 'phone' && 'phone' in values) {
         if (!otpSent) {
             // Send OTP phase
-            const appVerifier = await setupRecaptcha(); // Setup reCAPTCHA and get the instance
+            const appVerifier = setupRecaptcha(); // Setup reCAPTCHA and get the instance
             if (!appVerifier) {
                 setLoading(false);
                 return; // Stop if reCAPTCHA setup failed
@@ -175,8 +171,8 @@ export default function LoginPage() {
             try {
                 console.log("Attempting to send OTP to:", values.phone);
                 const confirmationResult = await signInWithPhoneNumber(auth, values.phone!, appVerifier);
-                window.loginConfirmationResult = confirmationResult;
-                setOtpSent(true);
+                window.loginConfirmationResult = confirmationResult; // Store globally (or in state/ref)
+                setOtpSent(true); // Update state to show OTP field
                 toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
                 console.log("OTP sent, confirmation result stored.");
             } catch (error: any) {
@@ -184,11 +180,15 @@ export default function LoginPage() {
                 console.error('Error Code:', error.code);
                 console.error('Error Message:', error.message);
                 // Reset reCAPTCHA on error
-                 window.loginRecaptchaVerifier?.clear();
-                 window.loginRecaptchaVerifier = undefined;
+                 window.loginRecaptchaVerifier?.render().then(widgetId => {
+                    window.grecaptcha?.reset(widgetId); // Use grecaptcha directly if available
+                    window.loginRecaptchaVerifier?.clear(); // Also clear Firebase wrapper state
+                    window.loginRecaptchaVerifier = undefined;
+                 }).catch(resetError => console.warn("Error resetting reCAPTCHA:", resetError));
+
                 toast({
                     title: 'Failed to Send OTP',
-                    description: `Error: ${error.code || error.message}. Check number or try again.`,
+                    description: `Error: ${error.message || error.code || 'Unknown error'}. Check number or try again.`,
                     variant: 'destructive',
                 });
             } finally {
@@ -279,7 +279,8 @@ export default function LoginPage() {
             </Tabs>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleLogin)} className="grid gap-4">
+            {/* We use a key prop to force re-render form when loginType changes, ensuring validation schema updates */}
+            <form key={loginType} onSubmit={form.handleSubmit(handleLogin)} className="grid gap-4">
                {loginType === 'email' ? (
                 <>
                      <FormField
