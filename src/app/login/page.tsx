@@ -17,7 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Import useEffect
 import { auth } from '@/lib/firebase/clientApp'; // Import auth instance
 import {
   signInWithEmailAndPassword,
@@ -45,11 +45,12 @@ const phoneSchema = z.object({
 type LoginFormValues = z.infer<typeof emailSchema> | z.infer<typeof phoneSchema>;
 type LoginType = 'email' | 'phone';
 
-// Make recaptchaVerifier and confirmationResult global or manage in component state
+// Make recaptchaVerifier and confirmationResult accessible
+// Using state or refs might be cleaner, but window works for simplicity here.
 declare global {
     interface Window {
-        recaptchaVerifier?: RecaptchaVerifier;
-        confirmationResult?: ConfirmationResult;
+        loginRecaptchaVerifier?: RecaptchaVerifier;
+        loginConfirmationResult?: ConfirmationResult;
     }
 }
 
@@ -60,6 +61,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false); // State to control loading spinner
   const [loginType, setLoginType] = useState<LoginType>('email');
   const [otpSent, setOtpSent] = useState(false);
+  const recaptchaContainerId = "recaptcha-container-login"; // Define ID
+
+  // Cleanup function for reCAPTCHA
+  useEffect(() => {
+    return () => {
+      try {
+        window.loginRecaptchaVerifier?.clear(); // Clean up verifier instance if component unmounts
+      } catch (error) {
+         console.warn("Error cleaning up reCAPTCHA verifier:", error);
+      }
+    };
+  }, []);
 
 
   const currentSchema = loginType === 'email' ? emailSchema : phoneSchema;
@@ -72,39 +85,60 @@ export default function LoginPage() {
 
  // Function to set up reCAPTCHA
     const setupRecaptcha = () => {
-        if (!window.recaptchaVerifier) {
-             // Check if container exists before creating verifier
-            const container = document.getElementById('recaptcha-container-login');
-            if (!container) {
-                console.error("Recaptcha container not found");
-                toast({ title: "Error", description: "Could not initialize login system. Please refresh.", variant: "destructive" });
-                return false; // Indicate failure
-            }
-            try {
-                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container-login', {
-                    'size': 'invisible', // Use invisible reCAPTCHA
-                    'callback': (response: any) => {
-                        console.log("reCAPTCHA verified for login");
-                    },
-                    'expired-callback': () => {
-                        toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
-                         window.recaptchaVerifier?.render().then(widgetId => {
-                             // @ts-ignore
-                             window.grecaptcha?.reset(widgetId);
-                         });
-                    }
-                });
-                 window.recaptchaVerifier.render().catch((error) => {
-                     console.error("Recaptcha render failed", error);
-                     toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Please refresh.", variant: "destructive" });
-                 });
-            } catch (error) {
-                 console.error("Error creating RecaptchaVerifier:", error);
-                 toast({ title: "Error", description: "Could not initialize login system. Please refresh.", variant: "destructive" });
-                 return false; // Indicate failure
-            }
+        // Check if container exists before creating verifier
+        const container = document.getElementById(recaptchaContainerId);
+        if (!container) {
+            console.error("Recaptcha container not found:", recaptchaContainerId);
+            // Attempt to create the container dynamically if absolutely necessary, though it should exist
+            // const newContainer = document.createElement('div');
+            // newContainer.id = recaptchaContainerId;
+            // document.body.appendChild(newContainer);
+            // container = newContainer;
+             toast({ title: "Error", description: "Login system initialization failed. Please refresh.", variant: "destructive" });
+             return null; // Indicate failure
         }
-        return true; // Indicate success
+
+        // If verifier exists and isn't cleared, return it
+        if (window.loginRecaptchaVerifier) {
+             try {
+                 // Attempt to render to be sure it's active, handle potential errors if already rendered/cleared
+                 window.loginRecaptchaVerifier.render();
+                 return window.loginRecaptchaVerifier;
+             } catch (error) {
+                 console.warn("Re-rendering existing verifier failed, creating new one.", error);
+                 // Proceed to create a new one if re-render fails
+             }
+         }
+
+
+         try {
+            const verifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
+                'size': 'invisible', // Use invisible reCAPTCHA
+                'callback': (response: any) => {
+                    console.log("reCAPTCHA verified for login (callback)");
+                    // Invisible reCAPTCHA resolves the promise from signInWithPhoneNumber directly
+                    // This callback might not be strictly necessary for invisible type unless debugging
+                },
+                'expired-callback': () => {
+                    toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
+                    window.loginRecaptchaVerifier?.clear(); // Clear the expired verifier
+                    window.loginRecaptchaVerifier = undefined;
+                    setupRecaptcha(); // Attempt to re-setup immediately might cause issues, maybe reset state instead
+                    setOtpSent(false); // Allow user to retry sending OTP
+                }
+            });
+            window.loginRecaptchaVerifier = verifier;
+            // Initial render is important!
+            return verifier.render().then(() => verifier).catch((error) => {
+                 console.error("Recaptcha render failed on setup:", error);
+                 toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Refresh might help.", variant: "destructive" });
+                 return null;
+            });
+        } catch (error) {
+             console.error("Error creating RecaptchaVerifier:", error);
+             toast({ title: "Error", description: "Could not initialize login system. Please refresh.", variant: "destructive" });
+             return null; // Indicate failure
+        }
     };
 
 
@@ -130,93 +164,84 @@ export default function LoginPage() {
         setLoading(false); // Hide spinner for email login regardless of outcome
       }
     } else if (loginType === 'phone' && 'phone' in values) {
-       if (!setupRecaptcha()) { // Setup reCAPTCHA and check if successful
-           setLoading(false);
-           return;
-       }
-       const appVerifier = window.recaptchaVerifier;
-         if (!appVerifier) {
-             toast({ title: "reCAPTCHA Error", description: "reCAPTCHA not initialized.", variant: "destructive" });
-             setLoading(false);
-             return;
-         }
-
         if (!otpSent) {
-             // Send OTP
+            // Send OTP phase
+            const appVerifier = await setupRecaptcha(); // Setup reCAPTCHA and get the instance
+            if (!appVerifier) {
+                setLoading(false);
+                return; // Stop if reCAPTCHA setup failed
+            }
+
             try {
-                 const confirmationResult = await signInWithPhoneNumber(auth, values.phone!, appVerifier);
-                 window.confirmationResult = confirmationResult;
-                 setOtpSent(true);
-                 toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
+                console.log("Attempting to send OTP to:", values.phone);
+                const confirmationResult = await signInWithPhoneNumber(auth, values.phone!, appVerifier);
+                window.loginConfirmationResult = confirmationResult;
+                setOtpSent(true);
+                toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
+                console.log("OTP sent, confirmation result stored.");
             } catch (error: any) {
-                 console.error('Phone login error (Send OTP):', error);
-                  window.recaptchaVerifier?.render().then(widgetId => {
-                      // @ts-ignore
-                      window.grecaptcha?.reset(widgetId);
-                  });
-                 toast({
+                console.error('Phone login error (Send OTP):', error);
+                console.error('Error Code:', error.code);
+                console.error('Error Message:', error.message);
+                // Reset reCAPTCHA on error
+                 window.loginRecaptchaVerifier?.clear();
+                 window.loginRecaptchaVerifier = undefined;
+                toast({
                     title: 'Failed to Send OTP',
-                    description: error.message || 'Could not send verification code. Is the number registered?',
+                    description: `Error: ${error.code || error.message}. Check number or try again.`,
                     variant: 'destructive',
-                 });
+                });
             } finally {
                 setLoading(false); // Stop loading after OTP attempt
             }
         } else {
-             // Verify OTP
-             if (!values.otp || values.otp.length !== 6) {
-                 toast({ title: 'Invalid OTP', description: 'Please enter the 6-digit code.', variant: 'destructive' });
-                 setLoading(false);
-                 return;
-             }
-             if (!window.confirmationResult) {
+            // Verify OTP phase
+            if (!values.otp || values.otp.length !== 6) {
+                toast({ title: 'Invalid OTP', description: 'Please enter the 6-digit code.', variant: 'destructive' });
+                setLoading(false);
+                return;
+            }
+            if (!window.loginConfirmationResult) {
                 toast({ title: 'Verification Error', description: 'Please request OTP again.', variant: 'destructive' });
                 setOtpSent(false); // Reset state
                 setLoading(false);
                 return;
-             }
+            }
             try {
-                 const userCredential = await window.confirmationResult.confirm(values.otp);
+                 console.log("Attempting to confirm OTP:", values.otp);
+                 const userCredential = await window.loginConfirmationResult.confirm(values.otp);
                  console.log('User logged in with phone:', userCredential.user);
                  toast({ title: 'Login Successful', description: 'Welcome back!' });
                  router.push('/');
+                 // Cleanup on success
+                 window.loginConfirmationResult = undefined;
+                 window.loginRecaptchaVerifier?.clear();
+                 window.loginRecaptchaVerifier = undefined;
             } catch (error: any) {
                  console.error('Phone login error (Verify OTP):', error);
+                 console.error('Error Code:', error.code);
+                 console.error('Error Message:', error.message);
                  toast({
                      title: 'OTP Verification Failed',
-                     description: error.message || 'Invalid code or error occurred.',
+                     description: `Error: ${error.code === 'auth/invalid-verification-code' ? 'Invalid OTP.' : (error.message || 'Unknown error.')}`,
                      variant: 'destructive',
                  });
+                 // Consider if OTP state should be reset here depending on error type
+                 // if (error.code === 'auth/invalid-verification-code') { /* Keep OTP state */ }
+                 // else { setOtpSent(false); }
             } finally {
                 setLoading(false); // Stop loading after OTP verification attempt
             }
         }
     } else {
-         // Fallback if values don't match expected structure
+         console.error("Form submission error: values structure mismatch.");
          setLoading(false);
     }
 
   };
 
   // TODO: Implement Google Login
-  // const handleGoogleLogin = async () => {
-  //   setLoading(true);
-  //   const provider = new GoogleAuthProvider();
-  //   try {
-  //     const result = await signInWithPopup(auth, provider);
-  //     console.log('User logged in with Google:', result.user);
-  //     toast({ title: 'Login Successful', description: 'Welcome back!' });
-  //     router.push('/');
-  //   } catch (error: any) {
-  //     console.error('Google login error:', error);
-  //     toast({
-  //       title: 'Google Login Failed',
-  //       description: error.message || 'An unknown error occurred.',
-  //       variant: 'destructive',
-  //     });
-  //   }
-  //   setLoading(false);
-  // };
+  // const handleGoogleLogin = async () => { ... };
 
 
   return (
@@ -227,9 +252,10 @@ export default function LoginPage() {
                 <LoadingSpinner />
             </div>
         )}
-         {/* Container for invisible reCAPTCHA - Needs unique ID if signup is on same page potentially */}
-        <div id="recaptcha-container-login"></div>
-      <Card className="mx-auto max-w-sm">
+         {/* Container for invisible reCAPTCHA - Must exist in the DOM */}
+        <div id={recaptchaContainerId}></div>
+
+      <Card className="mx-auto max-w-sm w-full"> {/* Added w-full */}
         <CardHeader>
           <CardTitle className="text-2xl">Login</CardTitle>
           <CardDescription>Enter your credentials below to login</CardDescription>
@@ -238,6 +264,12 @@ export default function LoginPage() {
             <Tabs value={loginType} onValueChange={(value) => {
                 setLoginType(value as LoginType);
                 setOtpSent(false); // Reset OTP state
+                 // Clear relevant reCAPTCHA if switching away from phone
+                 if (value !== 'phone') {
+                     window.loginRecaptchaVerifier?.clear();
+                     window.loginRecaptchaVerifier = undefined;
+                     window.loginConfirmationResult = undefined;
+                 }
                 form.reset(value === 'email' ? { email: '', password: '' } : { phone: '', otp: '' });
             }} className="w-full mb-4">
               <TabsList className="grid w-full grid-cols-2">
@@ -281,6 +313,9 @@ export default function LoginPage() {
                         </FormItem>
                         )}
                     />
+                     <Button type="submit" className="w-full" disabled={loading}>
+                        {loading ? 'Processing...' : 'Login'}
+                     </Button>
                 </>
                ) : (
                 <>
@@ -312,12 +347,13 @@ export default function LoginPage() {
                          )}
                          />
                      )}
+                     {/* Button text changes based on OTP state */}
+                     <Button type="submit" className="w-full" disabled={loading}>
+                       {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Login' : 'Send OTP')}
+                     </Button>
                 </>
                )}
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Processing...' : (loginType === 'phone' && !otpSent ? 'Send OTP' : (loginType === 'phone' ? 'Verify OTP & Login' : 'Login'))}
-              </Button>
               <Button variant="outline" className="w-full" disabled> {/* onClick={handleGoogleLogin} disabled={loading}> */}
                 Login with Google
               </Button>
@@ -334,3 +370,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
