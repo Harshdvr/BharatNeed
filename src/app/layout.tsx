@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google'; // Using Inter as a fallback sans-serif font
+// Removed Inter font import
 import './globals.css';
 import { cn } from '@/lib/utils';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Toaster } from "@/components/ui/toaster" // Import Toaster
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+// Removed Inter font initialization
 
 export const metadata: Metadata = {
   title: 'Bharat Need - Connect & Fulfill Needs Across India',
@@ -23,8 +23,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          'min-h-screen bg-background font-sans antialiased flex flex-col',
-          inter.variable
+          'min-h-screen bg-background font-sans antialiased flex flex-col'
+          // Removed inter.variable
         )}
       >
         <Header />
