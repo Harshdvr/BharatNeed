@@ -15,7 +15,7 @@ export default function LoginPage() {
         const password = formData.get('password');
         console.log({ email }); // Don't log password
         // Implement Firebase authentication or other auth provider
-        alert("Login functionality not implemented yet.");
+        console.log("Login functionality not implemented yet."); // Replaced alert with console.log
     };
 
     return (
