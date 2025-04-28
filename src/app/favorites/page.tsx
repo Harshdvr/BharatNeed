@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
+import LoadingSpinner from "@/components/loading-spinner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { IndianRupee, MapPin, Trash2 } from "lucide-react";
 import Image from "next/image";
@@ -8,29 +9,29 @@ import Link from "next/link";
 
 // Placeholder data for favorited postings - In a real app, fetch this for the logged-in user
 const favoritePostings = [
-  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', budget: '₹150/kg', description: 'Delicious mango and lemon pickles...', image: 'https://picsum.photos/seed/pickles/150/100', dateFavorited: '3 days ago' },
-  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', budget: '₹2000/month', description: 'Experienced teacher offering...', image: 'https://picsum.photos/seed/tuition/150/100', dateFavorited: '1 week ago' },
+  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', budget: '₹150/kg', description: 'Delicious mango and lemon pickles...', image: 'https://picsum.photos/seed/pickles/300/200', dateFavorited: '3 days ago' },
+  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', budget: '₹2000/month', description: 'Experienced teacher offering...', image: 'https://picsum.photos/seed/tuition/300/200', dateFavorited: '1 week ago' },
 ];
 
 // TODO: Implement remove from favorites action
 const handleRemoveFavorite = (id: string | number) => {
     console.log(`Removing favorite ${id}`);
     // Call server action to remove
-    alert(`Simulating remove favorite for ad ${id}`);
+    console.log(`Simulating remove favorite for ad ${id}`); // Replaced alert with console.log
 };
 
 export default function FavoritesPage() {
     return (
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8"><LoadingSpinner />
             <h1 className="text-3xl font-bold mb-6">My Favorites</h1>
 
             {favoritePostings.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {favoritePostings.map((ad) => (
-                        <Card key={ad.id} className="overflow-hidden flex flex-col">
+                        <Card key={ad.id} className="overflow-hidden flex flex-col shadow-md hover:shadow-lg transition-shadow duration-200">
                             <Link href={`/postings/${ad.id}`} className="block relative w-full aspect-[3/2] bg-muted">
                                 <Image
-                                    src={ad.image || 'https://picsum.photos/150/100'}
+                                    src={ad.image || 'https://picsum.photos/300/200'} // Use ad image or default
                                     alt={ad.title}
                                     fill
                                     style={{ objectFit: 'cover' }}

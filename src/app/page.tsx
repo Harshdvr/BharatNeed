@@ -4,14 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
 import { PlusCircle, MapPin, Clock, Tag, IndianRupee } from 'lucide-react';
 import Link from "next/link";
+import Image from "next/image"; // Import next/image
 
-// Placeholder data for postings
+// Placeholder data for postings - Added image URLs
 const postings = [
-  { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.' },
-  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.' },
-  { id: 3, type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.' },
-  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.' },
-  { id: 5, type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.' },
+  { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200' },
+  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200' },
+  { id: 3, type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200' },
+  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200' },
+  { id: 5, type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200' },
 ];
 
 // Placeholder for category icons
@@ -38,11 +39,11 @@ export default function Home() {
         <p className="mt-2 text-lg text-muted-foreground">
           Connecting needs and offers across India. Post what you need, offer what you have.
         </p>
-        {/* Button to Post Need/Offer */}
+        {/* Floating Action Button - Moved here */}
          <Button
             variant="default"
             size="lg"
-            className="mt-6 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md"
+            className="mt-6 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md rounded-full px-6 py-3"
             asChild
           >
             <Link href="/post-need">
@@ -72,8 +73,17 @@ export default function Home() {
           const CategoryIcon = getCategoryIcon(post.category);
           return (
           <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
-            <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow">
-              <CardHeader className="pb-3">
+            <Link href={`/postings/${post.id}`} className="block relative w-full aspect-[3/2] bg-muted">
+                 <Image
+                    src={post.image || 'https://picsum.photos/300/200'} // Use post image or default
+                    alt={post.title}
+                    fill // Use fill to cover the container
+                    style={{ objectFit: 'cover' }} // Cover the area
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw" // Responsive sizes
+                 />
+            </Link>
+            <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4"> {/* Moved padding here */}
+              <CardHeader className="p-0 pb-3"> {/* Removed padding */}
                 <div className="flex justify-between items-start gap-2">
                    <CardTitle className="text-lg leading-tight line-clamp-2">{post.title}</CardTitle>
                    <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
@@ -84,20 +94,19 @@ export default function Home() {
                    <CategoryIcon /> {post.category}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground flex-grow pb-3">
+              <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3"> {/* Removed padding */}
                 <p className="line-clamp-3">{post.description}</p>
               </CardContent>
-              <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-4 mt-auto">
-                 <div className="flex items-center gap-1.5 w-full">
+              <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-0 mt-auto"> {/* Removed padding */}
+                 <div className="flex items-center gap-1.5 w-full pt-3 px-4"> {/* Added padding back */}
                     <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location}</span>
                  </div>
-                 <div className="flex items-center gap-1.5 w-full">
+                 <div className="flex items-center gap-1.5 w-full px-4"> {/* Added padding back */}
                     <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency}
                  </div>
-                 <div className="flex items-center gap-1.5 w-full font-semibold">
+                 <div className="flex items-center gap-1.5 w-full font-semibold pb-3 px-4"> {/* Added padding back */}
                     <IndianRupee className="h-3.5 w-3.5" /> {post.budget}
                  </div>
-                 {/* Removed View Details & Chat button, whole card is a link now */}
               </CardFooter>
             </Link>
           </Card>
@@ -105,21 +114,6 @@ export default function Home() {
         })}
       </div>
 
-      {/* Floating Action Button - Removed */}
-      {/*
-      <Button
-        variant="default"
-        size="lg"
-        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground"
-        aria-label="Post Your Need or Offer"
-        asChild
-      >
-         <Link href="/post-need">
-           <PlusCircle className="h-7 w-7" />
-           <span className="sr-only">Post Your Need or Offer</span>
-         </Link>
-      </Button>
-       */}
     </div>
   );
 }
