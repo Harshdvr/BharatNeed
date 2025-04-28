@@ -126,6 +126,8 @@ export default function LoginPage() {
             : error.message || 'An unknown error occurred.',
           variant: 'destructive',
         });
+      } finally {
+        setLoading(false); // Hide spinner for email login regardless of outcome
       }
     } else if (loginType === 'phone' && 'phone' in values) {
        if (!setupRecaptcha()) { // Setup reCAPTCHA and check if successful
@@ -157,6 +159,8 @@ export default function LoginPage() {
                     description: error.message || 'Could not send verification code. Is the number registered?',
                     variant: 'destructive',
                  });
+            } finally {
+                setLoading(false); // Stop loading after OTP attempt
             }
         } else {
              // Verify OTP
@@ -183,11 +187,15 @@ export default function LoginPage() {
                      description: error.message || 'Invalid code or error occurred.',
                      variant: 'destructive',
                  });
+            } finally {
+                setLoading(false); // Stop loading after OTP verification attempt
             }
         }
+    } else {
+         // Fallback if values don't match expected structure
+         setLoading(false);
     }
 
-    setLoading(false); // Hide spinner
   };
 
   // TODO: Implement Google Login
@@ -308,7 +316,7 @@ export default function LoginPage() {
                )}
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Processing...' : (loginType === 'phone' && !otpSent ? 'Send OTP' : 'Login')}
+                {loading ? 'Processing...' : (loginType === 'phone' && !otpSent ? 'Send OTP' : (loginType === 'phone' ? 'Verify OTP & Login' : 'Login'))}
               </Button>
               <Button variant="outline" className="w-full" disabled> {/* onClick={handleGoogleLogin} disabled={loading}> */}
                 Login with Google

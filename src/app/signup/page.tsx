@@ -132,6 +132,8 @@ export default function SignUpPage() {
           description: error.message || 'An unknown error occurred.',
           variant: 'destructive',
         });
+      } finally {
+        setLoading(false); // Hide spinner for email signup
       }
     } else if (signUpType === 'phone' && 'phone' in values) {
         if (!setupRecaptcha()) { // Ensure reCAPTCHA is ready and handle failure
@@ -164,6 +166,8 @@ export default function SignUpPage() {
                     description: error.message || 'Could not send verification code. Check the number or try again.',
                     variant: 'destructive',
                 });
+            } finally {
+                setLoading(false); // Stop loading after OTP attempt
             }
         } else {
              // Verify OTP
@@ -193,12 +197,13 @@ export default function SignUpPage() {
                  });
                   // Optionally reset OTP sent state here if verification fails permanently
                   // setOtpSent(false);
+             } finally {
+                 setLoading(false); // Stop loading after OTP verification attempt
              }
          }
-    }
-    // Only set loading to false if it's not Phone OTP step or if an error occurred before OTP was sent/verified successfully
-    if (signUpType !== 'phone' || (signUpType === 'phone' && !otpSent) || (signUpType === 'phone' && otpSent && window.confirmationResult /* Check if verification attempt happened */)) {
-       setLoading(false); // Hide spinner
+    } else {
+        // Fallback if values don't match expected structure
+        setLoading(false);
     }
   };
 
