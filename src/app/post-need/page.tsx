@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
-// TODO: Import server action for posting
+import { handlePostSubmitAction } from '@/actions/postActions'; // Import the server action
 
 export default function PostNeedPage() {
     const [loading, setLoading] = useState(false); // State for loading
@@ -19,30 +19,13 @@ export default function PostNeedPage() {
     const categories = ["Services", "Buy/Sell", "Jobs", "Farming", "Tuitions", "Help", "Other"];
     const urgencies = ["Low", "Medium", "High", "Urgent"];
 
-    // Server action (defined elsewhere, e.g., src/actions/postActions.ts)
-    const handlePostSubmitAction = async (formData: FormData) => {
-        'use server';
-        console.log("Post form submitted (server action)");
-        const title = formData.get('title');
-        const description = formData.get('description');
-        // ... get other fields
-        console.log({ title, description });
-        // Simulate saving to Firestore...
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        console.log("Post saved successfully.");
-        // TODO: Revalidate path or redirect
-        // Cannot call toast from server action
-        return { success: true }; // Indicate success
-        // Or return { success: false, error: 'Failed to save post.' }; on error
-    };
-
      // Client-side wrapper for form submission
     const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setLoading(true);
         const formData = new FormData(event.currentTarget);
 
-        // Call the server action
+        // Call the imported server action
         const result = await handlePostSubmitAction(formData);
 
         setLoading(false);
