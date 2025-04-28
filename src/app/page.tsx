@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import LoadingSpinner from "@/components/loading-spinner";
+// Removed LoadingSpinner import as it's not needed for initial load here
 import { PlusCircle, MapPin, Clock, Tag, IndianRupee } from 'lucide-react';
 import Link from "next/link";
 import Image from "next/image"; // Import next/image
 
 // Placeholder data for postings - Added image URLs
+// TODO: Fetch this data asynchronously and add a loading state
 const postings = [
   { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200' },
   { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200' },
@@ -30,8 +31,13 @@ const getCategoryIcon = (category: string): React.ElementType => {
 };
 
 export default function Home() {
+  // TODO: Add state for loading data, e.g., const [isLoading, setIsLoading] = useState(true);
+  // TODO: Fetch postings data in useEffect or similar
+
+  // TODO: Render LoadingSpinner while isLoading is true
+
   return (
-    <div className="relative min-h-full"><LoadingSpinner />
+    <div className="relative min-h-full">
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
           Welcome to Bharat Need
@@ -58,6 +64,7 @@ export default function Home() {
         {Object.keys(categoryIcons).map((category) => {
           const Icon = getCategoryIcon(category);
           return (
+            // TODO: Add onClick handler to filter postings, potentially showing a loading state
             <Button key={category} variant="outline" size="sm" className="gap-1">
               <Icon />
               {category}
@@ -68,6 +75,7 @@ export default function Home() {
       </div>
 
       {/* Postings Grid */}
+      {/* TODO: Replace with loading state or actual data */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
         {postings.map((post) => {
           const CategoryIcon = getCategoryIcon(post.category);

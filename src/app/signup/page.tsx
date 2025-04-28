@@ -58,7 +58,7 @@ declare global {
 export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // State for loading spinner
   const [signUpType, setSignUpType] = useState<SignUpType>('email');
   const [otpSent, setOtpSent] = useState(false);
 
@@ -75,32 +75,47 @@ export default function SignUpPage() {
 
     // Function to set up reCAPTCHA
     const setupRecaptcha = () => {
-        if (!window.recaptchaVerifier) {
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-                'size': 'invisible', // Use invisible reCAPTCHA
-                'callback': (response: any) => {
-                    // reCAPTCHA solved, allow signInWithPhoneNumber.
-                    console.log("reCAPTCHA verified");
-                },
-                'expired-callback': () => {
-                    // Response expired. Ask user to solve reCAPTCHA again.
-                    toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
-                    window.recaptchaVerifier?.render().then(widgetId => {
-                     // @ts-ignore - grecaptcha might not be typed correctly
-                      window.grecaptcha?.reset(widgetId);
-                    });
-                }
-            });
-             window.recaptchaVerifier.render().catch((error) => {
-                 console.error("Recaptcha render failed", error);
-                 toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Please refresh.", variant: "destructive" });
-             });
+        // Ensure container exists
+        const container = document.getElementById('recaptcha-container');
+        if (!container) {
+            console.error("Recaptcha container not found");
+            toast({ title: "Error", description: "Could not initialize sign up system. Please refresh.", variant: "destructive" });
+            return false;
         }
+
+        if (!window.recaptchaVerifier) {
+            try {
+                 window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                    'size': 'invisible', // Use invisible reCAPTCHA
+                    'callback': (response: any) => {
+                        console.log("reCAPTCHA verified");
+                    },
+                    'expired-callback': () => {
+                        toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
+                        window.recaptchaVerifier?.render().then(widgetId => {
+                        // @ts-ignore - grecaptcha might not be typed correctly
+                        window.grecaptcha?.reset(widgetId);
+                        });
+                    }
+                });
+                // Initial render is important for invisible reCAPTCHA
+                window.recaptchaVerifier.render().catch((error) => {
+                    console.error("Initial Recaptcha render failed", error);
+                    toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Check console.", variant: "destructive" });
+                 });
+                 return true; // Indicate success
+            } catch (error) {
+                console.error("Error creating RecaptchaVerifier:", error);
+                toast({ title: "Error", description: "Could not initialize sign up system. Please refresh.", variant: "destructive" });
+                return false; // Indicate failure
+            }
+        }
+         return true; // Already initialized
     };
 
 
    const handleSignUp = async (values: SignUpFormValues) => {
-    setLoading(true);
+    setLoading(true); // Show spinner
     const displayName = `${values.firstName} ${values.lastName}`;
 
     if (signUpType === 'email' && 'email' in values && 'password' in values) {
@@ -119,10 +134,13 @@ export default function SignUpPage() {
         });
       }
     } else if (signUpType === 'phone' && 'phone' in values) {
-        setupRecaptcha(); // Ensure reCAPTCHA is ready
+        if (!setupRecaptcha()) { // Ensure reCAPTCHA is ready and handle failure
+             setLoading(false);
+             return;
+        }
         const appVerifier = window.recaptchaVerifier;
         if (!appVerifier) {
-             toast({ title: "reCAPTCHA Error", description: "reCAPTCHA not initialized.", variant: "destructive" });
+             toast({ title: "reCAPTCHA Error", description: "reCAPTCHA not initialized. Please wait or refresh.", variant: "destructive" });
              setLoading(false);
              return;
         }
@@ -136,10 +154,11 @@ export default function SignUpPage() {
                  toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
             } catch (error: any) {
                 console.error('Phone sign up error (Send OTP):', error);
+                 // Reset reCAPTCHA is crucial on error
                  window.recaptchaVerifier?.render().then(widgetId => {
                      // @ts-ignore - grecaptcha might not be typed correctly
                      window.grecaptcha?.reset(widgetId);
-                 });
+                 }).catch(resetError => console.error("Error resetting reCAPTCHA:", resetError));
                 toast({
                     title: 'Failed to Send OTP',
                     description: error.message || 'Could not send verification code. Check the number or try again.',
@@ -150,7 +169,7 @@ export default function SignUpPage() {
              // Verify OTP
             if (!values.otp || values.otp.length !== 6) {
                  toast({ title: 'Invalid OTP', description: 'Please enter the 6-digit code.', variant: 'destructive' });
-                 setLoading(false);
+                 setLoading(false); // Keep loading false if validation fails client-side
                  return;
             }
              if (!window.confirmationResult) {
@@ -172,17 +191,28 @@ export default function SignUpPage() {
                      description: error.message || 'Invalid code or error occurred.',
                      variant: 'destructive',
                  });
+                  // Optionally reset OTP sent state here if verification fails permanently
+                  // setOtpSent(false);
              }
          }
     }
-    setLoading(false);
+    // Only set loading to false if it's not Phone OTP step or if an error occurred before OTP was sent/verified successfully
+    if (signUpType !== 'phone' || (signUpType === 'phone' && !otpSent) || (signUpType === 'phone' && otpSent && window.confirmationResult /* Check if verification attempt happened */)) {
+       setLoading(false); // Hide spinner
+    }
   };
 
 
   return (
-    <div className="flex items-center justify-center py-12">
-      {loading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-50" />}
-      <div id="recaptcha-container"></div> {/* Container for invisible reCAPTCHA */}
+    <div className="flex items-center justify-center py-12 relative"> {/* Added relative */}
+       {/* Conditionally render the spinner */}
+        {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-50">
+                 <LoadingSpinner />
+            </div>
+        )}
+      {/* Container MUST exist in the DOM for invisible reCAPTCHA */}
+      <div id="recaptcha-container"></div>
       <Card className="mx-auto max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">Sign Up</CardTitle>
@@ -212,7 +242,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>First name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Max" {...field} />
+                            <Input placeholder="Max" {...field} disabled={loading}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -225,7 +255,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>Last name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Robinson" {...field} />
+                            <Input placeholder="Robinson" {...field} disabled={loading}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -242,7 +272,7 @@ export default function SignUpPage() {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="m@example.com" {...field} />
+                          <Input type="email" placeholder="m@example.com" {...field} disabled={loading}/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -255,7 +285,7 @@ export default function SignUpPage() {
                       <FormItem>
                         <FormLabel>Password</FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} />
+                          <Input type="password" {...field} disabled={loading}/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -271,7 +301,7 @@ export default function SignUpPage() {
                         <FormItem>
                         <FormLabel>Phone Number</FormLabel>
                         <FormControl>
-                            <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent} />
+                            <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
                         </FormControl>
                         <FormMessage />
                         </FormItem>
@@ -285,7 +315,7 @@ export default function SignUpPage() {
                              <FormItem>
                              <FormLabel>Enter OTP</FormLabel>
                              <FormControl>
-                                 <Input type="number" placeholder="Enter 6-digit OTP" {...field} />
+                                 <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading}/>
                              </FormControl>
                              <FormMessage />
                              </FormItem>

@@ -57,7 +57,7 @@ declare global {
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // State to control loading spinner
   const [loginType, setLoginType] = useState<LoginType>('email');
   const [otpSent, setOtpSent] = useState(false);
 
@@ -109,7 +109,7 @@ export default function LoginPage() {
 
 
   const handleLogin = async (values: LoginFormValues) => {
-    setLoading(true);
+    setLoading(true); // Show spinner
 
     if (loginType === 'email' && 'email' in values && 'password' in values) {
       try {
@@ -187,7 +187,7 @@ export default function LoginPage() {
         }
     }
 
-    setLoading(false);
+    setLoading(false); // Hide spinner
   };
 
   // TODO: Implement Google Login
@@ -212,8 +212,13 @@ export default function LoginPage() {
 
 
   return (
-    <div className="flex items-center justify-center py-12">
-        {loading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-50" />}
+    <div className="flex items-center justify-center py-12 relative"> {/* Added relative for spinner positioning */}
+        {/* Conditionally render the spinner */}
+        {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-50">
+                <LoadingSpinner />
+            </div>
+        )}
          {/* Container for invisible reCAPTCHA - Needs unique ID if signup is on same page potentially */}
         <div id="recaptcha-container-login"></div>
       <Card className="mx-auto max-w-sm">
@@ -244,7 +249,7 @@ export default function LoginPage() {
                         <FormItem>
                             <FormLabel>Email</FormLabel>
                             <FormControl>
-                            <Input type="email" placeholder="m@example.com" {...field} />
+                            <Input type="email" placeholder="m@example.com" {...field} disabled={loading}/>
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -262,7 +267,7 @@ export default function LoginPage() {
                                 </Link>
                             </div>
                             <FormControl>
-                            <Input type="password" {...field} />
+                            <Input type="password" {...field} disabled={loading}/>
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -278,7 +283,7 @@ export default function LoginPage() {
                         <FormItem>
                             <FormLabel>Phone Number</FormLabel>
                             <FormControl>
-                             <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent} />
+                             <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -292,7 +297,7 @@ export default function LoginPage() {
                              <FormItem>
                              <FormLabel>Enter OTP</FormLabel>
                              <FormControl>
-                                 <Input type="number" placeholder="Enter 6-digit OTP" {...field} />
+                                 <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} />
                              </FormControl>
                              <FormMessage />
                              </FormItem>
@@ -303,7 +308,7 @@ export default function LoginPage() {
                )}
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Logging in...' : (loginType === 'phone' && !otpSent ? 'Send OTP' : 'Login')}
+                {loading ? 'Processing...' : (loginType === 'phone' && !otpSent ? 'Send OTP' : 'Login')}
               </Button>
               <Button variant="outline" className="w-full" disabled> {/* onClick={handleGoogleLogin} disabled={loading}> */}
                 Login with Google

@@ -21,17 +21,20 @@ const messages = [
 
 export default function ChatPage() {
   // TODO: Implement actual chat logic: contact selection, message fetching, sending messages via Server Action/WebSocket
+  // TODO: Add loading state for sending messages
 
   const selectedContact = contacts[0]; // Placeholder: Assume first contact is selected
 
    const handleSendMessage = async (formData: FormData) => {
         'use server';
+        // TODO: Set loading true
         const message = formData.get('message');
         if (!message || typeof message !== 'string' || message.trim() === '') return;
 
         console.log("Sending message:", message);
         // Add logic to save message to Firestore and potentially notify recipient
         // Clear input field (client-side)
+        // TODO: Set loading false after completion/error
    };
 
   return (
@@ -75,6 +78,7 @@ export default function ChatPage() {
             </div>
 
             {/* Messages Area */}
+            {/* TODO: Add loading state for fetching messages */}
             <ScrollArea className="flex-1 p-4 space-y-4">
                {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
@@ -95,6 +99,7 @@ export default function ChatPage() {
                   className="flex-1"
                   autoComplete="off"
                 />
+                {/* TODO: Disable button when loading */}
                 <Button type="submit" size="icon" aria-label="Send Message">
                   <Send className="h-5 w-5" />
                 </Button>

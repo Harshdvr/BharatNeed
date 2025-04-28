@@ -1,6 +1,7 @@
 'use client';
 
-import LoadingSpinner from "@/components/loading-spinner";
+import { useState } from 'react'; // Import useState
+import LoadingSpinner from "@/components/loading-spinner"; // Keep LoadingSpinner import
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,29 +9,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Edit, IndianRupee, MapPin, MoreVertical, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 // Placeholder data for user's postings - In a real app, fetch this for the logged-in user
-const myPostings = [
+const initialMyPostings = [
   { id: 1, status: 'active', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', budget: 'Negotiable', description: 'Small leak under kitchen sink.', image: 'https://picsum.photos/seed/plumber/300/200', views: 15, datePosted: '2 days ago' },
   { id: 5, status: 'active', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', budget: '₹15k/month', description: 'Looking for a designer...', image: 'https://picsum.photos/seed/designer/300/200', views: 45, datePosted: '5 days ago' },
   { id: 'p1', status: 'pending', title: 'Selling Old Books', category: 'Buy/Sell', location: 'Delhi', budget: '₹500 (Lot)', description: 'Collection of fiction novels.', image: 'https://picsum.photos/seed/books/300/200', views: 0, datePosted: '1 hour ago' },
   { id: 'p2', status: 'inactive', title: 'Room for Rent', category: 'Property', location: 'Bangalore', budget: '₹8000/month', description: 'Single occupancy room available.', image: 'https://picsum.photos/seed/room/300/200', views: 120, datePosted: '1 month ago' },
 ];
 
-const activeAds = myPostings.filter(ad => ad.status === 'active');
-const pendingAds = myPostings.filter(ad => ad.status === 'pending');
-const inactiveAds = myPostings.filter(ad => ad.status === 'inactive');
-
-// TODO: Implement delete action
-const handleDelete = (id: string | number) => {
-    console.log(`Deleting ad ${id}`);
-    // Call server action to delete
-    console.log(`Simulating delete for ad ${id}`); // Replaced alert with console.log
-};
-
 export default function MyAdsPage() {
+    // TODO: Add loading state for initial data fetch
+    const [myPostings, setMyPostings] = useState(initialMyPostings);
+    const [loadingDeleteId, setLoadingDeleteId] = useState<string | number | null>(null); // State for delete loading
+    const { toast } = useToast();
+
+    const activeAds = myPostings.filter(ad => ad.status === 'active');
+    const pendingAds = myPostings.filter(ad => ad.status === 'pending');
+    const inactiveAds = myPostings.filter(ad => ad.status === 'inactive');
+
+    // TODO: Implement delete action
+    const handleDelete = async (id: string | number) => {
+        setLoadingDeleteId(id); // Start loading for this ad deletion
+        console.log(`Deleting ad ${id}`);
+        // Simulate server action call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+            // Call server action to delete
+            console.log(`Simulating delete for ad ${id}`);
+            setMyPostings(prev => prev.filter(ad => ad.id !== id));
+            toast({ title: "Ad Deleted", description: "Your ad has been successfully deleted." });
+        } catch (error) {
+            console.error("Failed to delete ad:", error);
+            toast({ title: "Error", description: "Could not delete the ad.", variant: "destructive" });
+        } finally {
+            setLoadingDeleteId(null); // Stop loading
+        }
+    };
+
+    // TODO: Add loading indicator for initial data fetch
+    // if (isLoadingInitialData) {
+    //     return <LoadingSpinner />;
+    // }
+
     return (
-        <div className="container mx-auto px-4 py-8"><LoadingSpinner />
+        <div className="container mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold mb-6">My Ads</h1>
 
             <Tabs defaultValue="active" className="w-full">
@@ -44,7 +68,7 @@ export default function MyAdsPage() {
                     {activeAds.length > 0 ? (
                         <div className="space-y-4">
                             {activeAds.map((ad) => (
-                                <AdCard key={ad.id} ad={ad} />
+                                <AdCard key={ad.id} ad={ad} onDelete={handleDelete} loadingDeleteId={loadingDeleteId} />
                             ))}
                         </div>
                     ) : (
@@ -56,7 +80,7 @@ export default function MyAdsPage() {
                      {pendingAds.length > 0 ? (
                         <div className="space-y-4">
                             {pendingAds.map((ad) => (
-                                <AdCard key={ad.id} ad={ad} />
+                                <AdCard key={ad.id} ad={ad} onDelete={handleDelete} loadingDeleteId={loadingDeleteId}/>
                             ))}
                         </div>
                     ) : (
@@ -68,7 +92,7 @@ export default function MyAdsPage() {
                      {inactiveAds.length > 0 ? (
                         <div className="space-y-4">
                             {inactiveAds.map((ad) => (
-                                <AdCard key={ad.id} ad={ad} />
+                                <AdCard key={ad.id} ad={ad} onDelete={handleDelete} loadingDeleteId={loadingDeleteId}/>
                             ))}
                         </div>
                     ) : (
@@ -81,9 +105,20 @@ export default function MyAdsPage() {
 }
 
 // Reusable Ad Card Component for My Ads page
-function AdCard({ ad }: { ad: typeof myPostings[0] }) {
+function AdCard({ ad, onDelete, loadingDeleteId }: {
+    ad: typeof initialMyPostings[0],
+    onDelete: (id: string | number) => void,
+    loadingDeleteId: string | number | null
+}) {
+    const isDeleting = loadingDeleteId === ad.id;
     return (
-        <Card className="overflow-hidden flex flex-col sm:flex-row shadow-md hover:shadow-lg transition-shadow duration-200">
+        <Card className="overflow-hidden flex flex-col sm:flex-row shadow-md hover:shadow-lg transition-shadow duration-200 relative">
+            {/* Spinner overlay for delete operation */}
+            {isDeleting && (
+                 <div className="absolute inset-0 bg-background/70 flex items-center justify-center z-10 rounded-lg">
+                    <LoadingSpinner showText={false} className="h-8 w-8" />
+                 </div>
+            )}
             <Link href={`/postings/${ad.id}`} className="flex-shrink-0 w-full sm:w-48 h-40 sm:h-auto relative bg-muted block">
                  <Image
                     src={ad.image || 'https://picsum.photos/300/200'} // Use ad image or default
@@ -123,13 +158,20 @@ function AdCard({ ad }: { ad: typeof myPostings[0] }) {
                     </div>
                     <div className="flex gap-2">
                          {ad.status === 'active' && (
-                            <Button variant="outline" size="sm" className="h-7 px-2" asChild>
+                            <Button variant="outline" size="sm" className="h-7 px-2" asChild disabled={!!loadingDeleteId}>
                                <Link href={`/post-need?edit=${ad.id}`}> {/* Link to edit page */}
                                   <Edit className="h-3.5 w-3.5 mr-1" /> Edit
                                </Link>
                             </Button>
                          )}
-                          <Button variant="destructive" size="sm" className="h-7 px-2" onClick={() => handleDelete(ad.id)}>
+                          <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={() => onDelete(ad.id)}
+                              disabled={!!loadingDeleteId} // Disable all buttons while deleting
+                              aria-label="Delete Ad"
+                          >
                             <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
                           </Button>
                     </div>

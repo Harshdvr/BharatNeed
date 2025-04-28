@@ -1,7 +1,8 @@
+
 export default function TermsPage() {
   return (
     <div className="prose dark:prose-invert max-w-3xl mx-auto">
-      <h1>Terms of Service</h1>
+       <h1>Terms of Service</h1>
       <p>Last updated: {new Date().toLocaleDateString()}</p>
       <p>
         Welcome to Bharat Need! These Terms of Service ("Terms") govern your use of the BharatNeed.com website and any related services (collectively, the "Service") provided by Bharat Need ("we," "us," or "our").

@@ -1,6 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react'; // Import hooks
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import LoadingSpinner from "@/components/loading-spinner"; // Keep spinner import
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,34 +12,85 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Edit, Mail, MapPin, Phone, UserCheck } from "lucide-react";
 import Link from "next/link";
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
-// Placeholder user data - In a real app, fetch this for the logged-in user
-const userProfile = {
-    name: 'Ramesh Kumar',
-    email: 'ramesh.k@example.com',
-    phone: '+91 9876543210',
-    location: 'Mumbai, Maharashtra',
-    memberSince: 'January 2023',
-    bio: 'Interested in connecting with local service providers and helping others in the community.',
-    avatarUrl: 'https://picsum.photos/id/101/200/200',
-    isVerified: true,
-    totalAds: 5,
-    activeAds: 2,
-};
+// Placeholder user data structure
+interface UserProfile {
+    name: string;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    memberSince: string;
+    bio: string | null;
+    avatarUrl: string | null;
+    isVerified: boolean;
+    totalAds: number;
+    activeAds: number;
+}
+
+// Placeholder fetch function
+const fetchUserProfile = async (): Promise<UserProfile> => {
+    // Simulate fetching data for the logged-in user
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return {
+        name: 'Ramesh Kumar',
+        email: 'ramesh.k@example.com',
+        phone: '+91 9876543210',
+        location: 'Mumbai, Maharashtra',
+        memberSince: 'January 2023',
+        bio: 'Interested in connecting with local service providers and helping others in the community.',
+        avatarUrl: 'https://picsum.photos/id/101/200/200',
+        isVerified: true,
+        totalAds: 5,
+        activeAds: 2,
+    };
+}
 
 export default function ProfilePage() {
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+
+     useEffect(() => {
+        const loadProfile = async () => {
+            setIsLoading(true);
+            try {
+                // In a real app, get user ID from auth state
+                const profileData = await fetchUserProfile();
+                setUserProfile(profileData);
+            } catch (error) {
+                console.error("Failed to load profile:", error);
+                toast({ title: "Error", description: "Could not load profile data.", variant: "destructive"});
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadProfile();
+    }, [toast]); // Add toast to dependency array
 
     // TODO: Implement profile editing logic
     const handleEditProfile = () => {
         // Navigate to an edit profile page or open a modal
-        alert("Navigate to edit profile page (Not implemented)");
+        toast({ description: "Edit profile functionality not implemented." });
     };
+
+     if (isLoading) {
+        return (
+             <div className="flex justify-center items-center min-h-[60vh]">
+                <LoadingSpinner />
+            </div>
+        );
+    }
+
+    if (!userProfile) {
+        return <div className="text-center py-10">Could not load user profile.</div>;
+    }
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
                 <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-primary">
-                    <AvatarImage src={userProfile.avatarUrl} alt={userProfile.name} />
+                    <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.name} />
                     <AvatarFallback className="text-4xl">{userProfile.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="flex-grow text-center sm:text-left">
@@ -71,18 +124,27 @@ export default function ProfilePage() {
                          <CardDescription>This information may be visible on your ads.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <Mail className="h-5 w-5 text-muted-foreground"/>
-                            <span>{userProfile.email}</span>
-                        </div>
-                         <div className="flex items-center gap-3">
-                            <Phone className="h-5 w-5 text-muted-foreground"/>
-                            <span>{userProfile.phone}</span> {/* TODO: Add logic to show/hide */}
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <MapPin className="h-5 w-5 text-muted-foreground"/>
-                            <span>{userProfile.location}</span>
-                        </div>
+                         {userProfile.email && (
+                            <div className="flex items-center gap-3">
+                                <Mail className="h-5 w-5 text-muted-foreground"/>
+                                <span>{userProfile.email}</span>
+                            </div>
+                         )}
+                         {userProfile.phone && (
+                            <div className="flex items-center gap-3">
+                                <Phone className="h-5 w-5 text-muted-foreground"/>
+                                <span>{userProfile.phone}</span> {/* TODO: Add logic to show/hide */}
+                            </div>
+                         )}
+                        {userProfile.location && (
+                            <div className="flex items-center gap-3">
+                                <MapPin className="h-5 w-5 text-muted-foreground"/>
+                                <span>{userProfile.location}</span>
+                            </div>
+                        )}
+                         {!userProfile.email && !userProfile.phone && !userProfile.location && (
+                            <p className="text-sm text-muted-foreground">No contact information provided.</p>
+                         )}
                     </CardContent>
                 </Card>
 

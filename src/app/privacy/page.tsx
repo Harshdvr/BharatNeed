@@ -1,7 +1,8 @@
+
 export default function PrivacyPage() {
   return (
     <div className="prose dark:prose-invert max-w-3xl mx-auto">
-      <h1>Privacy Policy</h1>
+       <h1>Privacy Policy</h1>
        <p>Last updated: {new Date().toLocaleDateString()}</p>
        <p>
         Bharat Need ("we," "us," or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website BharatNeed.com and related services (the "Service").
