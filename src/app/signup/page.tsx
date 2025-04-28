@@ -54,13 +54,15 @@ type SignUpFormValues = z.infer<typeof emailSchema> | z.infer<typeof phoneSchema
 type SignUpType = 'email' | 'phone';
 
 // Use useRef instead of window object for cleaner state management
-// declare global {
-//     interface Window {
-//         grecaptcha?: any; // Added for direct grecaptcha access if needed
-//         signUpRecaptchaVerifier?: RecaptchaVerifier;
-//         signUpConfirmationResult?: ConfirmationResult;
-//     }
-// }
+// Use global window object only for reCAPTCHA instance if necessary for callbacks,
+// but prefer refs for internal state management.
+declare global {
+    interface Window {
+        grecaptcha?: any; // For potential direct reset access
+        signUpRecaptchaVerifier?: RecaptchaVerifier;
+        signUpConfirmationResult?: ConfirmationResult; // Keep using window object for simplicity, could refactor
+    }
+}
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -73,7 +75,7 @@ export default function SignUpPage() {
 
   // Use refs to manage Firebase objects safely
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
-  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaWidgetIdRef = useRef<number | null>(null); // Store widget ID if needed
 
 
   // Ensure Firebase Auth is initialized on the client
@@ -96,9 +98,11 @@ export default function SignUpPage() {
   useEffect(() => {
     return () => {
       console.log("SignUpPage cleanup: Clearing reCAPTCHA verifier if exists.");
+      // Use ref for cleanup
       recaptchaVerifierRef.current?.clear();
       recaptchaVerifierRef.current = null;
-      confirmationResultRef.current = null;
+      recaptchaWidgetIdRef.current = null;
+      window.signUpConfirmationResult = undefined; // Clear window object too
     };
   }, [signUpType]);
 
@@ -123,31 +127,41 @@ export default function SignUpPage() {
             }
 
             // Ensure container exists
-            const container = document.getElementById(recaptchaContainerId);
+            let container = document.getElementById(recaptchaContainerId);
             if (!container) {
-                console.error("Recaptcha container element not found in DOM:", recaptchaContainerId);
-                toast({ title: "UI Error", description: "Sign up UI failed to load correctly. Please refresh.", variant: "destructive" });
-                return reject(new Error("Recaptcha container not found"));
+                 console.error("Recaptcha container element not found, creating dynamically:", recaptchaContainerId);
+                 // Dynamically create if missing - less ideal, should exist in JSX
+                 container = document.createElement('div');
+                 container.id = recaptchaContainerId;
+                 document.body.appendChild(container); // Append somewhere logical
+                // toast({ title: "UI Error", description: "Sign up UI failed to load correctly. Please refresh.", variant: "destructive" });
+                // return reject(new Error("Recaptcha container not found"));
             }
 
-            // Clear previous instance if it exists
+            // Clear previous instance managed by ref if it exists
             if (recaptchaVerifierRef.current) {
-                console.log("Clearing previous reCAPTCHA verifier instance for signup.");
+                console.log("Clearing previous reCAPTCHA verifier instance via ref for signup.");
                 recaptchaVerifierRef.current.clear();
                 recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
             }
+             // Also clear potential global instance just in case
+            window.signUpRecaptchaVerifier?.clear();
+            window.signUpRecaptchaVerifier = undefined;
+
 
             console.log("Creating new RecaptchaVerifier instance for signup.");
             try {
                 const verifier = new RecaptchaVerifier(authInstance, recaptchaContainerId, {
                     'size': 'invisible',
                     'callback': (response: any) => {
-                        console.log("reCAPTCHA verified for signup (callback).");
+                        console.log("reCAPTCHA verified for signup (callback). Response:", response);
                     },
                     'expired-callback': () => {
                         toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
                         recaptchaVerifierRef.current?.clear();
                         recaptchaVerifierRef.current = null;
+                        recaptchaWidgetIdRef.current = null;
                         setOtpSent(false);
                         reject(new Error("reCAPTCHA expired"));
                     },
@@ -156,20 +170,24 @@ export default function SignUpPage() {
                         toast({ title: "reCAPTCHA Error", description: `Failed to verify. ${error?.message || 'Please try again.'}`, variant: "destructive"});
                         recaptchaVerifierRef.current?.clear();
                         recaptchaVerifierRef.current = null;
+                        recaptchaWidgetIdRef.current = null;
                         setOtpSent(false);
                         reject(new Error("reCAPTCHA verification error"));
                     }
                 });
                 recaptchaVerifierRef.current = verifier; // Store in ref
 
+                // Render and resolve after rendering
                 verifier.render().then((widgetId) => {
                     console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
+                    recaptchaWidgetIdRef.current = widgetId; // Store widget ID
                     resolve(verifier);
                 }).catch((error) => {
                     console.error("Signup Recaptcha render failed:", error);
                     toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
                     recaptchaVerifierRef.current?.clear();
                     recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
                     reject(error);
                 });
 
@@ -219,12 +237,15 @@ export default function SignUpPage() {
             if (!otpSent) {
                 // --- Send OTP Phase ---
                 const appVerifier = await setupRecaptcha(); // Ensure reCAPTCHA is ready
-                if (!appVerifier) throw new Error("reCAPTCHA Verifier setup failed.");
+                if (!appVerifier) {
+                     console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
+                     throw new Error("reCAPTCHA Verifier setup failed.");
+                }
 
                  console.log("Using appVerifier for signup:", appVerifier);
                  console.log("Attempting to send OTP for signup to:", values.phone);
                 const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
-                confirmationResultRef.current = confirmationResult; // Store globally using ref
+                window.signUpConfirmationResult = confirmationResult; // Store globally using ref
                 setOtpSent(true); // Update state to show OTP field
                 form.reset({...values, otp: ''}); // Clear OTP field after sending
                  toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
@@ -239,16 +260,18 @@ export default function SignUpPage() {
                      form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
                      throw new Error("OTP must be 6 digits.");
                  }
-                 if (!confirmationResultRef.current) {
+                 // Use window object for confirmation result
+                 if (!window.signUpConfirmationResult) {
                     toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
                     setOtpSent(false); // Reset state
                     recaptchaVerifierRef.current?.clear();
                     recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
                     throw new Error("Confirmation session expired or invalid.");
                  }
                  console.log("Attempting to confirm signup OTP:", values.otp);
                  // Phone Auth signs the user in. If the number is new, it creates the account.
-                 const userCredential = await confirmationResultRef.current.confirm(values.otp);
+                 const userCredential = await window.signUpConfirmationResult.confirm(values.otp);
 
                  // Update profile *after* confirming OTP and potentially creating the user
                  if (userCredential.user) {
@@ -261,9 +284,10 @@ export default function SignUpPage() {
                      console.log('User signed up/logged in with phone:', userCredential.user.uid);
                      toast({ title: 'Sign Up Successful', description: 'Welcome! Redirecting...' });
                       // Cleanup on success
-                      confirmationResultRef.current = null;
+                      window.signUpConfirmationResult = undefined;
                       recaptchaVerifierRef.current?.clear();
                       recaptchaVerifierRef.current = null;
+                      recaptchaWidgetIdRef.current = null;
                      router.push('/');
                  } else {
                     throw new Error("User object not found after OTP confirmation.");
@@ -279,25 +303,34 @@ export default function SignUpPage() {
                 console.warn("Resetting reCAPTCHA due to Send OTP error during signup.");
                 recaptchaVerifierRef.current.clear();
                 recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
              }
 
              const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
-             let description = `Error: ${error.code === 'auth/invalid-verification-code' && otpSent ? 'Invalid OTP.' : (error.message || 'Unknown error.')}`;
+             let description = `Error: ${error.message || 'Unknown error.'}`;
 
              // Handle specific configuration errors more clearly
-             if (error.code === 'auth/configuration-not-found') {
-                description = "reCAPTCHA configuration error. Please ensure it's set up correctly in your Firebase project and the page has fully loaded. Refreshing might help.";
-             } else if (error.code === 'auth/invalid-phone-number') {
+            if (error.code === 'auth/configuration-not-found') {
+                description = "reCAPTCHA configuration error. Please ensure Phone Auth is enabled in Firebase and the page has loaded correctly. Refreshing might help.";
+            } else if (error.code === 'auth/invalid-phone-number') {
                  description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
+            } else if (error.code === 'auth/invalid-verification-code') {
+                 description = 'Invalid OTP entered. Please try again.';
+            } else if (error.code === 'auth/too-many-requests') {
+                 description = 'Too many attempts. Please try again later.';
+            } else if (error.code?.includes('auth/network-request-failed')) {
+                 description = 'Network error. Please check your connection and try again.';
+            } else if (error.message?.includes('reCAPTCHA')) {
+                 description = 'reCAPTCHA verification failed. Please try again.';
              }
 
              toast({
                 title: title,
-                description: description + (otpSent ? '' : " Check number or try again."),
+                description: description,
                 variant: 'destructive',
              });
              // Optionally reset OTP state based on error
-             if (error.message.includes('expired') || error.code === 'auth/code-expired') {
+             if (error.message.includes('expired') || error.code === 'auth/code-expired' || error.code === 'auth/session-expired') {
                  setOtpSent(false);
              }
         } finally {
@@ -323,7 +356,7 @@ export default function SignUpPage() {
             </div>
         )}
       {/* Container MUST exist in the DOM for invisible reCAPTCHA */}
-      <div id={recaptchaContainerId}></div>
+      <div id={recaptchaContainerId} style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
 
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader>
@@ -339,7 +372,7 @@ export default function SignUpPage() {
                 form.reset(newType === 'email'
                   ? { firstName: '', lastName: '', email: '', password: '' }
                   : { firstName: '', lastName: '', phone: '', otp: '' });
-                 // Trigger reCAPTCHA cleanup via useEffect dependency change
+                 // Cleanup verifier via useEffect dependency change
               }} className="w-full mb-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="email">Email</TabsTrigger>
@@ -451,9 +484,10 @@ export default function SignUpPage() {
                         <Button variant="link" size="sm" onClick={() => {
                             setOtpSent(false);
                             form.reset({...form.getValues(), otp: ''}); // Reset OTP field
-                            confirmationResultRef.current = null; // Clear confirmation ref
+                            window.signUpConfirmationResult = undefined; // Clear confirmation ref/state
                             recaptchaVerifierRef.current?.clear(); // Clear verifier ref
                             recaptchaVerifierRef.current = null;
+                            recaptchaWidgetIdRef.current = null;
                         }} className="text-sm" type="button" disabled={loading}> {/* Added type="button" */}
                             Change Number or Resend OTP
                         </Button>
