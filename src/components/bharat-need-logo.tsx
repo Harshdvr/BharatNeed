@@ -34,7 +34,7 @@ export default function BharatNeedLogo({ className, ...props }: BharatNeedLogoPr
         <path
            // Adjusted path for the green bottom part
           d="M3.5 20 C3.5 30 18.4 38.8 19.2 39.2 C19.6 39.4 20.4 39.4 20.8 39.2 C21.6 38.8 36.5 30 36.5 20 Z"
-          fill="#388E3C" // Use specific green color from style guide
+          fill="#388E3C" // Specific green color
           transform="translate(0,0)" // No additional transform needed here
         />
          {/* Handshake (Simplified - White) */}
@@ -50,8 +50,8 @@ export default function BharatNeedLogo({ className, ...props }: BharatNeedLogoPr
              <path d="M23 12 L 20 10 L 19 14 Z" fill="white"/>
          </g>
 
-         {/* Small blueish dot at the bottom - removed as it's not clearly visible in the source image */}
-         {/* <circle cx="20" cy="41.5" r="1.5" fill="hsl(var(--secondary))" /> */}
+        {/* Blue dot at the bottom point */}
+        <circle cx="20" cy="41.5" r="1.5" fill="#1D4ED8" />
 
       </g>
 
@@ -60,13 +60,19 @@ export default function BharatNeedLogo({ className, ...props }: BharatNeedLogoPr
         /* Use system font stack for better cross-platform consistency */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap'); /* Example: Using Inter, adjust as needed */
 
-        .bn-text { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; font-weight: 600; font-size: 18px; }
-        .bn-subtext { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; font-size: 9px; fill: hsl(var(--muted-foreground)); }
-        .bharat-text { fill: hsl(var(--primary)); } /* Orange */
-        .need-text { fill: hsl(var(--foreground)); } /* Dark Gray/Black */
+        .bn-text {
+          font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-weight: 600;
+          font-size: 18px;
+          fill: #1D4ED8; /* Blue color for text */
+        }
+        .bn-subtext {
+          font-family: 'Aptos', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-size: 9px;
+          fill: hsl(var(--muted-foreground)); /* Muted color for Hindi text */
+        }
       `}</style>
-      <text x="55" y="22" className="bn-text bharat-text">Bharat</text>
-      <text x="115" y="22" className="bn-text need-text">Need</text>
+      <text x="55" y="22" className="bn-text">Bharat Need</text> {/* Combined text */}
       {/* Hindi Text "भारत" */}
       <text x="55" y="35" className="bn-subtext">भारत</text>
     </svg>
