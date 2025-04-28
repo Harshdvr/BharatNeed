@@ -54,39 +54,39 @@ export default function Home() {
       </div>
 
       {/* Postings Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
         {postings.map((post) => {
           const CategoryIcon = getCategoryIcon(post.category);
           return (
           <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-start gap-2">
-                 <CardTitle className="text-lg leading-tight">{post.title}</CardTitle>
-                 <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
-                   {post.type}
-                 </Badge>
-              </div>
-              <CardDescription className="flex items-center gap-1 text-xs pt-1">
-                 <CategoryIcon /> {post.category}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground flex-grow pb-3">
-              <p className="line-clamp-3">{post.description}</p>
-            </CardContent>
-            <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-4">
-               <div className="flex items-center gap-1.5 w-full">
-                  <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location}</span>
-               </div>
-               <div className="flex items-center gap-1.5 w-full">
-                  <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency}
-               </div>
-               <div className="flex items-center gap-1.5 w-full">
-                  <IndianRupee className="h-3.5 w-3.5" /> Budget: {post.budget}
-               </div>
-               <Button variant="link" size="sm" className="p-0 h-auto self-end mt-1">
-                  View Details & Chat
-               </Button>
-            </CardFooter>
+            <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow">
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start gap-2">
+                   <CardTitle className="text-lg leading-tight line-clamp-2">{post.title}</CardTitle>
+                   <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
+                     {post.type}
+                   </Badge>
+                </div>
+                <CardDescription className="flex items-center gap-1 text-xs pt-1">
+                   <CategoryIcon /> {post.category}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground flex-grow pb-3">
+                <p className="line-clamp-3">{post.description}</p>
+              </CardContent>
+              <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-4 mt-auto">
+                 <div className="flex items-center gap-1.5 w-full">
+                    <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location}</span>
+                 </div>
+                 <div className="flex items-center gap-1.5 w-full">
+                    <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency}
+                 </div>
+                 <div className="flex items-center gap-1.5 w-full font-semibold">
+                    <IndianRupee className="h-3.5 w-3.5" /> {post.budget}
+                 </div>
+                 {/* Removed View Details & Chat button, whole card is a link now */}
+              </CardFooter>
+            </Link>
           </Card>
           );
         })}
@@ -97,12 +97,12 @@ export default function Home() {
         variant="default"
         size="lg"
         className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground"
-        aria-label="Post Your Need"
+        aria-label="Post Your Need or Offer"
         asChild
       >
          <Link href="/post-need">
            <PlusCircle className="h-7 w-7" />
-           <span className="sr-only">Post Your Need</span>
+           <span className="sr-only">Post Your Need or Offer</span>
          </Link>
       </Button>
     </div>

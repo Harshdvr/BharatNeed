@@ -9,49 +9,49 @@ body {
 @layer base {
   :root {
     --background: 0 0% 100%; /* Light Background */
-    --foreground: 0 0% 3.9%; /* Dark Foreground */
+    --foreground: 240 10% 3.9%; /* Dark Foreground */
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 240 10% 3.9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
+    --popover-foreground: 240 10% 3.9%;
 
-    --primary: 123 42% 38%; /* Earthy Green: #388E3C */
-    --primary-foreground: 55 100% 97%; /* A light color for text on primary */
+    --primary: 24 95% 53%; /* Orange: #F59E0B */
+    --primary-foreground: 0 0% 100%; /* White text for orange */
 
-    --secondary: 55 100% 61%; /* Warm Yellow: #FFEB3B */
-    --secondary-foreground: 40 100% 15%; /* Dark text for yellow */
+    --secondary: 215 20% 65%; /* Cool Gray: #94a3b8 */
+    --secondary-foreground: 240 10% 3.9%; /* Dark text for gray */
 
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
+    --muted: 240 4.8% 95.9%; /* Light Gray */
+    --muted-foreground: 240 3.8% 46.1%; /* Medium Gray */
 
-    --accent: 36 100% 50%; /* Orange: #FF9800 */
-    --accent-foreground: 0 0% 100%; /* White text for orange */
+    --accent: 24 95% 53%; /* Orange as accent */
+    --accent-foreground: 0 0% 100%; /* White text for accent */
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 123 42% 38%; /* Use primary color for ring */
+    --border: 240 5.9% 90%; /* Lighter Gray Border */
+    --input: 240 5.9% 90%; /* Lighter Gray Input */
+    --ring: 24 95% 53%; /* Orange for ring */
 
-    --chart-1: 123 42% 38%;
-    --chart-2: 55 100% 61%;
-    --chart-3: 36 100% 50%;
-    --chart-4: 210 40% 96.1%;
-    --chart-5: 140 40% 56.1%;
+    --chart-1: 24 95% 53%; /* Orange */
+    --chart-2: 215 20% 65%; /* Cool Gray */
+    --chart-3: 24 95% 65%; /* Lighter Orange */
+    --chart-4: 215 20% 80%; /* Lighter Gray */
+    --chart-5: 24 95% 45%; /* Darker Orange */
 
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-primary: 24 95% 53%; /* Orange */
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 24 95% 53%; /* Orange Ring */
   }
 
   .dark {
@@ -64,39 +64,39 @@ body {
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 123 42% 45%; /* Slightly lighter green for dark mode */
-    --primary-foreground: 55 100% 97%;
+    --primary: 24 95% 58%; /* Slightly lighter orange for dark */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 55 100% 55%; /* Slightly darker yellow for dark mode */
-    --secondary-foreground: 40 100% 15%;
+    --secondary: 215 14% 50%; /* Darker Cool Gray */
+    --secondary-foreground: 0 0% 98%; /* Light text for gray */
 
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 0 0% 62.9%;
+    --muted: 240 3.7% 15.9%; /* Dark Gray */
+    --muted-foreground: 0 0% 62.9%; /* Lighter Medium Gray */
 
-    --accent: 36 100% 55%; /* Slightly darker orange for dark mode */
+    --accent: 24 95% 58%; /* Slightly lighter orange for dark accent */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 123 42% 45%; /* Use primary color for ring */
+    --border: 240 3.7% 15.9%; /* Dark Gray Border */
+    --input: 240 3.7% 15.9%; /* Dark Gray Input */
+    --ring: 24 95% 58%; /* Lighter Orange Ring */
 
-    --chart-1: 123 42% 45%;
-    --chart-2: 55 100% 55%;
-    --chart-3: 36 100% 55%;
-    --chart-4: 210 40% 96.1%;
-    --chart-5: 140 40% 56.1%;
+    --chart-1: 24 95% 58%; /* Lighter Orange */
+    --chart-2: 215 14% 50%; /* Darker Cool Gray */
+    --chart-3: 24 95% 70%; /* Even Lighter Orange */
+    --chart-4: 215 14% 35%; /* Even Darker Gray */
+    --chart-5: 24 95% 50%; /* Orange */
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary: 24 95% 58%; /* Lighter Orange */
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 24 95% 58%; /* Lighter Orange Ring */
   }
 }
 

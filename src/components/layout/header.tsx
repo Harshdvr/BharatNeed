@@ -3,32 +3,55 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Globe, Search, UserCircle } from 'lucide-react';
+import { Globe, Search, UserCircle, MapPin } from 'lucide-react';
 import LanguageSwitcher from '@/components/language-switcher';
 
 export default function Header() {
   // Placeholder for user authentication state
   const isAuthenticated = false;
 
+  // TODO: Implement location selection logic (e.g., dropdown, modal, state management)
+  const handleLocationChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("Location changed:", event.target.value);
+    // Update location state...
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4">
+      <div className="container flex h-16 items-center justify-between px-4 gap-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8 text-primary">
-            <path d="M12.378 1.602a.75.75 0 0 0-.756 0L3.366 6.166A.75.75 0 0 0 3 6.82v10.36a.75.75 0 0 0 .366.655l8.256 4.564a.75.75 0 0 0 .756 0l8.256-4.564a.75.75 0 0 0 .366-.655V6.82a.75.75 0 0 0-.366-.655L12.378 1.602ZM12 15.952l-6.9-3.816v-3.04l6.9 3.816 6.9-3.816v3.04L12 15.952Zm0-8.516L5.1 3.62v3.04l6.9 3.816 6.9-3.816V3.62L12 7.436Z" />
+        <Link href="/" className="flex items-center gap-2 flex-shrink-0">
+          {/* Bharat Need SVG Logo */}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" fill="currentColor" className="h-8 w-auto text-primary">
+            <style>{`.bn-text { font-family: Arial, sans-serif; font-weight: bold; font-size: 40px; }`}</style>
+            <text x="0" y="35" className="bn-text">Bharat</text>
+            <text x="115" y="35" className="bn-text text-foreground">Need</text>
+            {/* Simple dot accent */}
+            <circle cx="190" cy="30" r="7" className="text-primary"/>
           </svg>
-          <span className="text-xl font-bold text-primary">Bharat Need</span>
+          {/* <span className="text-xl font-bold text-primary hidden sm:inline">Bharat Need</span> */}
         </Link>
 
+        {/* Location Input - Placeholder */}
+        <div className="relative hidden md:flex items-center flex-shrink min-w-[150px] max-w-[250px]">
+           <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+           <Input
+             type="text"
+             placeholder="Select Location..."
+             className="pl-9 h-9 text-sm"
+             onChange={handleLocationChange}
+             // defaultValue="India" // Optional default
+           />
+        </div>
+
         {/* Search Bar - Placeholder */}
-        <div className="relative hidden md:flex flex-grow max-w-md items-center mx-4">
-          <Input type="search" placeholder="Search needs & offers..." className="pl-10" />
+        <div className="relative hidden md:flex flex-grow max-w-lg items-center">
+          <Input type="search" placeholder="Search needs & offers..." className="pl-10 h-9" />
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <LanguageSwitcher />
           {isAuthenticated ? (
             <Button variant="ghost" size="icon">
@@ -37,17 +60,30 @@ export default function Header() {
             </Button>
           ) : (
             <>
-              <Button variant="ghost" size="sm">Login</Button>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Login</Button>
               <Button size="sm">Sign Up</Button>
             </>
           )}
         </div>
       </div>
-       {/* Mobile Search Bar */}
-       <div className="relative md:hidden flex flex-grow items-center p-2 border-t">
-          <Input type="search" placeholder="Search needs & offers..." className="pl-10" />
-          <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+
+      {/* Mobile Search & Location */}
+      <div className="md:hidden flex items-center p-2 border-t gap-2">
+        <div className="relative flex items-center flex-shrink-0">
+          <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Location..."
+            className="pl-9 h-9 text-sm w-28" // Smaller width for mobile
+            onChange={handleLocationChange}
+            // defaultValue="India"
+          />
         </div>
+        <div className="relative flex flex-grow items-center">
+          <Input type="search" placeholder="Search needs & offers..." className="pl-10 h-9" />
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+        </div>
+      </div>
     </header>
   );
 }
