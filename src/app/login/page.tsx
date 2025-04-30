@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Import Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -29,6 +29,7 @@ import {
   signInWithPopup, // Import signInWithPopup
   getAdditionalUserInfo, // Import getAdditionalUserInfo
   updateProfile, // Import updateProfile
+  sendSignInLinkToEmail, // Import Email Link functions
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -36,9 +37,11 @@ import LoadingSpinner from '@/components/loading-spinner';
 import { doc, setDoc, getDoc } from "firebase/firestore"; // Import Firestore functions
 import { Separator } from '@/components/ui/separator'; // Import Separator
 import { FcGoogle } from 'react-icons/fc'; // Using react-icons/fc for Google logo
+import { Mail } from 'lucide-react'; // Import Mail icon
 
+type LoginMethod = 'phone' | 'email' | 'google';
 
-// Only phone schema is needed now for the form itself
+// Phone schema is needed now for the form itself
 const phoneSchema = z.object({
     phone: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Invalid phone number format (e.g., +919876543210)'),
     otp: z.string().optional(), // OTP is optional initially, required later
@@ -47,8 +50,16 @@ const phoneSchema = z.object({
     path: ["otp"], // specific path for the error
 });
 
+// Email login schema
+const emailSchema = z.object({
+    email: z.string().email('Invalid email address'),
+});
 
-type LoginFormValues = z.infer<typeof phoneSchema>;
+// Combined schema for validation (adjust if needed)
+const loginSchema = z.union([phoneSchema, emailSchema]);
+
+// Type for form values - Adjust based on active method
+type LoginFormValues = z.infer<typeof phoneSchema> | z.infer<typeof emailSchema>;
 
 // Use global window object for reCAPTCHA instances for simplicity
 declare global {
@@ -59,21 +70,18 @@ declare global {
     }
 }
 
-
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const recaptchaContainerId = "recaptcha-container-login"; // Define ID
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('phone'); // Default to phone
+  const [otpSent, setOtpSent] = useState(false); // Only for phone
+  const recaptchaContainerId = "recaptcha-container-login";
   const [authInstance, setAuthInstance] = useState<Auth | null>(null);
 
-  // Use refs to manage Firebase objects safely within the component lifecycle
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
-  const recaptchaWidgetIdRef = useRef<number | null>(null); // Store widget ID if needed
+  const recaptchaWidgetIdRef = useRef<number | null>(null);
 
-
-  // Ensure Firebase Auth is initialized on the client
   useEffect(() => {
     try {
         const auth = ensureAuthInitialized();
@@ -88,26 +96,33 @@ export default function LoginPage() {
     }
   }, [toast]);
 
-  // Ensure reCAPTCHA cleanup when component unmounts
   useEffect(() => {
     return () => {
         console.log("LoginPage cleanup: Clearing reCAPTCHA verifier if exists.");
-        // Use the ref for cleanup
         recaptchaVerifierRef.current?.clear();
         recaptchaVerifierRef.current = null;
-        recaptchaWidgetIdRef.current = null; // Clear widget ID ref
-        window.loginConfirmationResult = undefined; // Clear window object too
-        window.loginRecaptchaVerifier?.clear(); // Clear specific login verifier
+        recaptchaWidgetIdRef.current = null;
+        window.loginConfirmationResult = undefined;
+        window.loginRecaptchaVerifier?.clear();
         window.loginRecaptchaVerifier = undefined;
     };
-  }, []); // Only run on unmount
+  }, []);
 
+  // Use different schemas based on the selected login method
+  const currentSchema = loginMethod === 'phone' ? phoneSchema : emailSchema;
 
   const form = useForm<LoginFormValues>({
-    resolver: zodResolver(phoneSchema),
-    defaultValues: { phone: '', otp: '' },
+    resolver: zodResolver(currentSchema),
+    defaultValues: { phone: '', email: '', otp: '' },
     mode: 'onChange',
   });
+
+  // Reset form validation when login method changes
+  useEffect(() => {
+    form.reset();
+    setOtpSent(false); // Reset OTP state when method changes
+  }, [loginMethod, form]);
+
 
  // Function to set up reCAPTCHA
  const setupRecaptcha = (): Promise<RecaptchaVerifier | null> => {
@@ -117,7 +132,6 @@ export default function LoginPage() {
         return reject(new Error("Auth not ready"));
       }
 
-      // Ensure container exists in the DOM *before* creating the verifier
       let container = document.getElementById(recaptchaContainerId);
       if (!container) {
         console.error("Recaptcha container element not found:", recaptchaContainerId);
@@ -125,10 +139,8 @@ export default function LoginPage() {
         return reject(new Error("Recaptcha container not found"));
       }
 
-      // Use ref to manage the verifier instance
       if (recaptchaVerifierRef.current) {
         console.log("Using existing reCAPTCHA verifier instance via ref for login.");
-        // Optionally re-render or check status, but often reusing is fine if not expired
          recaptchaVerifierRef.current.render().then((widgetId) => {
              recaptchaWidgetIdRef.current = widgetId;
              resolve(recaptchaVerifierRef.current);
@@ -137,7 +149,6 @@ export default function LoginPage() {
              recaptchaVerifierRef.current?.clear();
              recaptchaVerifierRef.current = null;
              recaptchaWidgetIdRef.current = null;
-             // Proceed to create a new one
              createNewVerifier(resolve, reject);
          });
       } else {
@@ -159,11 +170,11 @@ export default function LoginPage() {
                 },
                 'expired-callback': () => {
                     console.error("reCAPTCHA challenge expired (expired-callback).");
-                    toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
+                    toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP/Link again.", variant: "destructive" });
                     recaptchaVerifierRef.current?.clear();
                     recaptchaVerifierRef.current = null;
                     recaptchaWidgetIdRef.current = null;
-                    setOtpSent(false); // Allow user to retry
+                    setOtpSent(false);
                     reject(new Error("reCAPTCHA expired"));
                 },
                 'error-callback': (error: any) => {
@@ -177,16 +188,16 @@ export default function LoginPage() {
                 }
             });
 
-            recaptchaVerifierRef.current = verifier; // Store in ref
+            recaptchaVerifierRef.current = verifier;
 
             verifier.render().then((widgetId) => {
                 console.log("reCAPTCHA rendered successfully. Widget ID:", widgetId);
-                recaptchaWidgetIdRef.current = widgetId; // Store widget ID
-                resolve(verifier); // Resolve with the verifier instance
+                recaptchaWidgetIdRef.current = widgetId;
+                resolve(verifier);
             }).catch((error) => {
                 console.error("Recaptcha render failed:", error);
                 toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Refresh might help.", variant: "destructive" });
-                recaptchaVerifierRef.current?.clear(); // Cleanup on render fail
+                recaptchaVerifierRef.current?.clear();
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
                 reject(error);
@@ -198,18 +209,31 @@ export default function LoginPage() {
         }
   };
 
+  // Combined submit handler
+  const handleLogin = async (values: LoginFormValues) => {
+    setLoading(true);
+    if (loginMethod === 'phone' && 'phone' in values) {
+      await handlePhoneLogin(values);
+    } else if (loginMethod === 'email' && 'email' in values) {
+      await handleEmailLogin(values);
+    } else {
+      console.error("Invalid login method or form values");
+      toast({ title: "Error", description: "Invalid login method selected.", variant: "destructive" });
+      setLoading(false);
+    }
+  };
 
-  const handlePhoneLogin = async (values: LoginFormValues) => {
+  const handlePhoneLogin = async (values: Extract<LoginFormValues, { phone: string }>) => {
     if (!authInstance) {
         toast({ title: "Error", description: "Authentication service not ready.", variant: "destructive" });
+        setLoading(false);
         return;
     }
-    setLoading(true);
 
      try {
         if (!otpSent) {
             // --- Send OTP Phase ---
-            const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
+            const appVerifier = await setupRecaptcha();
             if (!appVerifier) {
                  console.error("reCAPTCHA setup failed, cannot send OTP.");
                  setLoading(false);
@@ -218,15 +242,13 @@ export default function LoginPage() {
 
             console.log("Using appVerifier:", appVerifier);
             console.log("Attempting to send OTP to:", values.phone);
-
-            // Ensure reCAPTCHA is rendered and ready before signInWithPhoneNumber
-            await appVerifier.render(); // Re-render might be necessary if reused or reset
+            await appVerifier.render();
 
             const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
 
-            window.loginConfirmationResult = confirmationResult; // Store globally for simplicity
+            window.loginConfirmationResult = confirmationResult;
             setOtpSent(true);
-            form.reset({...values, otp: ''}); // Clear OTP field after sending
+            form.reset({...values, otp: ''});
             toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
             console.log("OTP sent successfully. Confirmation result stored.");
         } else {
@@ -249,50 +271,44 @@ export default function LoginPage() {
              console.log('User logged in with phone:', userCredential.user.uid);
              toast({ title: 'Login Successful', description: 'Welcome back!' });
 
-             // Check Firestore profile status after login
              await checkProfileAndRedirect(userCredential.user);
 
-             // Cleanup on success
              window.loginConfirmationResult = undefined;
              recaptchaVerifierRef.current?.clear();
              recaptchaVerifierRef.current = null;
              recaptchaWidgetIdRef.current = null;
-             // router.push('/'); // Redirect is handled by checkProfileAndRedirect
         }
     } catch (error: any) {
         console.error(`Phone login error (${otpSent ? 'Verify OTP' : 'Send OTP'}):`, error);
         console.error('Error Code:', error.code);
         console.error('Error Message:', error.message);
 
-        // Reset reCAPTCHA on specific errors or when starting over
-        if (!otpSent || error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token') {
-            console.warn("Resetting reCAPTCHA due to error or state change.");
+         // Attempt reset on error if verifier exists
+         if (recaptchaVerifierRef.current) {
+            console.warn("Resetting reCAPTCHA due to login error.");
              try {
                  if (recaptchaWidgetIdRef.current !== null && window.grecaptcha) {
                     window.grecaptcha.reset(recaptchaWidgetIdRef.current);
                     console.log("Explicitly reset reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
                  } else {
-                    recaptchaVerifierRef.current?.clear();
+                    recaptchaVerifierRef.current.clear();
                  }
              } catch (resetError) {
                 console.error("Error clearing/resetting reCAPTCHA:", resetError);
              } finally {
                  recaptchaVerifierRef.current = null;
                  recaptchaWidgetIdRef.current = null;
-                 // Force re-setup on next attempt if it was a captcha error
-                 if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token') {
-                    setOtpSent(false);
-                 }
              }
-        }
+         }
 
 
         const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
         let description = `Error: ${error.message || 'Unknown error.'}`;
 
+         // Specific error handling...
          if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) {
-            description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
-            setOtpSent(false); // Force user to restart the process
+            description = 'reCAPTCHA verification failed. Please try sending the OTP/Link again.';
+            setOtpSent(false);
         } else if (error.code === 'auth/invalid-phone-number') {
             description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
              setOtpSent(false);
@@ -306,18 +322,7 @@ export default function LoginPage() {
         } else if (error.code === 'auth/too-many-requests') {
              description = 'Too many attempts. Please try again later.';
              setOtpSent(false);
-        } else if (error.code?.includes('auth/network-request-failed')) {
-             description = 'Network error. Please check your connection and try again.';
-        } else if (error.code === 'auth/configuration-not-found') {
-             description = 'Firebase configuration error. Ensure Phone Auth is enabled.';
-             setOtpSent(false);
-        } else if (error.code === 'auth/missing-client-identifier' || error.message?.includes('missing client identifier')) {
-             description = 'reCAPTCHA configuration error. Check Firebase setup and domain whitelisting.';
-             setOtpSent(false);
-        } else if (error.code === 'auth/unverified-email') {
-              description = 'Your email is not verified. Please check your inbox or use another login method.';
-              setOtpSent(false); // Allow trying another method
-        }
+        } // Add other specific errors
 
         toast({
             title: title,
@@ -325,13 +330,47 @@ export default function LoginPage() {
             variant: 'destructive',
         });
 
-         if (error.message.includes('expired') || error.code === 'auth/session-expired') {
+         if (error.code === 'auth/session-expired' || error.message?.includes('expired')) {
               setOtpSent(false);
          }
     } finally {
         setLoading(false);
     }
   };
+
+  const handleEmailLogin = async (values: Extract<LoginFormValues, { email: string }>) => {
+     if (!authInstance) {
+        toast({ title: "Error", description: "Authentication service not ready.", variant: "destructive" });
+        setLoading(false);
+        return;
+     }
+
+     const actionCodeSettings = {
+        url: `${window.location.origin}/`, // Redirect to home after successful login
+        handleCodeInApp: true,
+     };
+
+     try {
+        await sendSignInLinkToEmail(authInstance, values.email, actionCodeSettings);
+        // Save email locally
+        window.localStorage.setItem('emailForSignIn', values.email);
+        toast({
+           title: 'Check your email',
+           description: `A sign-in link has been sent to ${values.email}.`,
+        });
+        form.reset(); // Clear form
+     } catch (error: any) {
+        console.error('Error sending email link:', error);
+        toast({
+           title: 'Failed to Send Link',
+           description: error.message || 'Could not send sign-in link.',
+           variant: 'destructive',
+        });
+     } finally {
+        setLoading(false);
+     }
+   };
+
 
     const handleGoogleSignIn = async () => {
         if (!authInstance) {
@@ -346,7 +385,6 @@ export default function LoginPage() {
             console.log("Google Sign-In Successful:", user.uid);
             toast({ title: "Login Successful", description: "Welcome!" });
 
-            // Check if user exists in Firestore and if profile is complete
             await checkProfileAndRedirect(user);
 
         } catch (error: any) {
@@ -363,28 +401,41 @@ export default function LoginPage() {
 
     // Helper function to check profile completion and redirect
     const checkProfileAndRedirect = async (user: any) => {
-         if (!user || !firestore) return; // Should not happen if called after successful login
+         if (!user || !firestore) return;
 
          try {
             const userDocRef = doc(firestore, "users", user.uid);
             const docSnap = await getDoc(userDocRef);
-            const additionalUserInfo = getAdditionalUserInfo({user: user} as any); // Hacky way to satisfy type, improve if possible
-            const isNewUser = additionalUserInfo?.isNewUser ?? false; // Assume existing if info missing after login
+             // Try to get isNewUser info - might not always be available
+             let isNewUser = false;
+             try {
+                 const additionalUserInfo = getAdditionalUserInfo({user: user} as any);
+                 isNewUser = additionalUserInfo?.isNewUser ?? false;
+             } catch (infoError) {
+                 console.warn("Could not get additional user info:", infoError);
+                 // Assume existing if info cannot be retrieved
+             }
 
-             // If it's a new user (via Google or potentially Phone if doc didn't exist) or profile is incomplete
+
+             // If it's flagged as new, or Firestore doc doesn't exist, or profile is explicitly incomplete
             if (isNewUser || !docSnap.exists() || !docSnap.data()?.isProfileComplete) {
-                 // Create/Update Firestore doc if needed (especially for new Google users)
-                 if (isNewUser || !docSnap.exists()) {
+                 // Ensure Firestore doc exists (especially for new Google users)
+                 if (!docSnap.exists()) {
                       await setDoc(userDocRef, {
                          uid: user.uid,
-                         name: user.displayName || 'Unnamed User',
+                         name: user.displayName || 'Unnamed User', // Use auth name as default
                          email: user.email || null,
                          phone: user.phoneNumber || null,
                          createdAt: new Date(),
-                         isProfileComplete: false, // Mark as incomplete
-                         // Add other default fields if necessary
-                     }, { merge: true }); // Merge to avoid overwriting existing data if any
+                         isProfileComplete: false,
+                     }, { merge: true }); // Merge to avoid overwriting if created concurrently
+                      console.log("Created Firestore doc for new user:", user.uid);
+                 } else if (!docSnap.data()?.isProfileComplete && user.displayName && docSnap.data()?.name !== user.displayName) {
+                     // If profile exists but is incomplete, update name from Google if different
+                     await setDoc(userDocRef, { name: user.displayName }, { merge: true });
+                      console.log("Updated name from Google for incomplete profile:", user.uid);
                  }
+
                  toast({ title: isNewUser ? 'Sign Up Successful' : 'Login Successful', description: 'Please complete your profile.' });
                  router.push('/complete-profile');
             } else {
@@ -394,18 +445,9 @@ export default function LoginPage() {
          } catch (firestoreError) {
              console.error("Error checking/updating user profile in Firestore:", firestoreError);
              toast({ title: "Profile Check Failed", description: "Could not verify profile status. Redirecting home.", variant: "destructive" });
-             router.push('/'); // Fallback redirect to home
+             router.push('/');
          }
     };
-
-     const handleEmailOtpSignIn = async () => {
-         // TODO: Implement Email OTP/Link Sign-In logic
-         // This would involve:
-         // 1. Collecting the user's email address.
-         // 2. Calling `sendSignInLinkToEmail` or a custom OTP function.
-         // 3. Handling the link/OTP verification on a separate page or logic branch.
-         toast({ title: "Coming Soon", description: "Email Sign-In is under development.", variant: "default" });
-     };
 
 
     return (
@@ -416,9 +458,8 @@ export default function LoginPage() {
                 <LoadingSpinner />
             </div>
         )}
-         {/* Container for invisible reCAPTCHA */}
+         {/* Container for invisible reCAPTCHA (only for phone) */}
         <div id={recaptchaContainerId} className="absolute -top-96 -left-96"></div>
-
 
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader>
@@ -428,67 +469,110 @@ export default function LoginPage() {
         <CardContent className="grid gap-6">
            {/* Google Sign-In Button */}
             <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
-                <FcGoogle className="mr-2 h-4 w-4" /> {/* Use react-icons Google logo */}
+                <FcGoogle className="mr-2 h-4 w-4" />
                 Login with Google
             </Button>
 
-            {/* Email OTP/Link Button (Placeholder) */}
-            <Button variant="outline" className="w-full" onClick={handleEmailOtpSignIn} disabled={true} >
-                {/* <Mail className="mr-2 h-4 w-4" /> */} {/* Add Mail icon if desired */}
-                Login with Email (Coming Soon)
-            </Button>
+             {/* Method Selection Buttons */}
+            <div className="flex gap-2">
+                <Button
+                    variant={loginMethod === 'email' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => setLoginMethod('email')}
+                    disabled={loading}
+                >
+                    <Mail className="mr-2 h-4 w-4" /> Email Link
+                </Button>
+                 <Button
+                    variant={loginMethod === 'phone' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => setLoginMethod('phone')}
+                    disabled={loading}
+                 >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                    Phone OTP
+                </Button>
+            </div>
 
+            <Separator />
 
-            <Separator /> {/* Separator */}
-
-             {/* Phone Login Form */}
+            {/* Dynamic Form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handlePhoneLogin)} className="grid gap-4">
-                 <CardDescription className="text-center">Or login with phone</CardDescription>
+            <form onSubmit={form.handleSubmit(handleLogin)} className="grid gap-4">
+                 <CardDescription className="text-center">
+                    {loginMethod === 'email' ? 'Enter your email to receive a login link' : 'Or login with phone'}
+                 </CardDescription>
+
                 {/* Phone Fields */}
-                <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Phone Number</FormLabel>
-                        <FormControl>
-                            <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
-                        </FormControl>
-                        <FormMessage />
-                    </FormItem>
-                    )}
-                />
-                    {otpSent && (
+                {loginMethod === 'phone' && (
+                    <>
                         <FormField
-                        control={form.control}
-                        name="otp"
-                        render={({ field }) => (
+                            control={form.control}
+                            name="phone"
+                            render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Enter OTP</FormLabel>
-                            <FormControl>
-                                <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
-                            </FormControl>
-                            <FormMessage />
+                                <FormLabel>Phone Number</FormLabel>
+                                <FormControl>
+                                    <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
+                                </FormControl>
+                                <FormMessage />
                             </FormItem>
-                        )}
+                            )}
                         />
-                    )}
-                    <Button type="submit" className="w-full" disabled={loading}>
-                        {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Login' : 'Send OTP')}
-                    </Button>
-                    {otpSent && (
-                    <Button variant="link" size="sm" onClick={() => {
-                        setOtpSent(false);
-                        form.reset({...form.getValues(), otp: ''}); // Reset OTP field
-                        window.loginConfirmationResult = undefined; // Clear confirmation ref/state
-                        recaptchaVerifierRef.current?.clear(); // Clear verifier ref
-                        recaptchaVerifierRef.current = null;
-                        recaptchaWidgetIdRef.current = null;
-                    }} className="text-sm" type="button" disabled={loading}>
-                        Change Number or Resend OTP
-                    </Button>
-                    )}
+                        {otpSent && (
+                            <FormField
+                            control={form.control}
+                            name="otp"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Enter OTP</FormLabel>
+                                <FormControl>
+                                    <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                        )}
+                        <Button type="submit" className="w-full" disabled={loading}>
+                            {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Login' : 'Send OTP')}
+                        </Button>
+                        {otpSent && (
+                            <Button variant="link" size="sm" onClick={() => {
+                                setOtpSent(false);
+                                form.reset({...form.getValues(), otp: ''});
+                                window.loginConfirmationResult = undefined;
+                                recaptchaVerifierRef.current?.clear();
+                                recaptchaVerifierRef.current = null;
+                                recaptchaWidgetIdRef.current = null;
+                            }} className="text-sm" type="button" disabled={loading}>
+                                Change Number or Resend OTP
+                            </Button>
+                        )}
+                    </>
+                )}
+
+                {/* Email Fields */}
+                {loginMethod === 'email' && (
+                     <>
+                        <FormField
+                            control={form.control}
+                            name="email"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Email Address</FormLabel>
+                                <FormControl>
+                                <Input type="email" placeholder="you@example.com" {...field} disabled={loading} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                        <Button type="submit" className="w-full" disabled={loading}>
+                             {loading ? 'Sending Link...' : 'Send Login Link'}
+                        </Button>
+                    </>
+                )}
             </form>
           </Form>
           <div className="mt-4 text-center text-sm">
@@ -503,3 +587,4 @@ export default function LoginPage() {
     </>
   );
 }
+```

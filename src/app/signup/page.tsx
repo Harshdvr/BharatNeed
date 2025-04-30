@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -6,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Import Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -24,19 +25,22 @@ import {
   RecaptchaVerifier,
   updateProfile,
   ConfirmationResult,
-  Auth, // Import Auth type
-  getAdditionalUserInfo, // Import getAdditionalUserInfo
-  getAuth, // Import getAuth if not already imported implicitly by ensureAuthInitialized
-  GoogleAuthProvider, // Import GoogleAuthProvider
-  signInWithPopup, // Import signInWithPopup
+  Auth,
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  sendSignInLinkToEmail, // Import Email Link functions
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/loading-spinner';
 import { doc, setDoc, getDoc } from "firebase/firestore"; // Import Firestore functions
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { FcGoogle } from 'react-icons/fc'; // Using react-icons/fc for Google logo
+import { Separator } from '@/components/ui/separator';
+import { FcGoogle } from 'react-icons/fc';
+import { Mail } from 'lucide-react'; // Import Mail icon
 
+// Define sign-up types
+type SignUpMethod = 'phone' | 'email' | 'google';
 
 // Common fields schema part
 const commonSchema = z.object({
@@ -53,38 +57,46 @@ const phoneSchema = commonSchema.extend({
     path: ["otp"],
 });
 
-// Type for form values (now only phone schema based)
-type SignUpFormValues = z.infer<typeof phoneSchema>;
+// Email signup schema
+const emailSchema = commonSchema.extend({
+    email: z.string().email('Invalid email address'),
+});
 
+// Combined schema for validation based on type (though form structure might vary)
+const signUpSchema = z.union([phoneSchema, emailSchema]);
+
+// Type for form values - Adjust based on active method
+type SignUpFormValues = z.infer<typeof phoneSchema> | z.infer<typeof emailSchema>;
 
 // Declare window object augmentation for reCAPTCHA
 declare global {
     interface Window {
         grecaptcha?: any;
         signUpConfirmationResult?: ConfirmationResult;
-        signUpRecaptchaVerifier?: RecaptchaVerifier; // Specific verifier for signup
+        signUpRecaptchaVerifier?: RecaptchaVerifier;
     }
 }
-
 
 export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const recaptchaContainerId = "recaptcha-container-signup"; // Define ID
+  const [signUpMethod, setSignUpMethod] = useState<SignUpMethod>('phone'); // Default to phone
+  const [otpSent, setOtpSent] = useState(false); // Only for phone OTP
+  const recaptchaContainerId = "recaptcha-container-signup";
   const [authInstance, setAuthInstance] = useState<Auth | null>(null);
 
-  // Use refs to manage Firebase objects safely
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaWidgetIdRef = useRef<number | null>(null);
 
-
-  // Ensure Firebase Auth is initialized
-   useEffect(() => {
+  useEffect(() => {
      try {
-         const auth = getAuth(); // Ensure auth is initialized from clientApp
-         setAuthInstance(auth);
+         // Ensure getAuth() is called correctly. Assuming 'auth' imported is the instance.
+         if (auth) {
+             setAuthInstance(auth);
+         } else {
+             throw new Error("Firebase Auth not initialized");
+         }
      } catch (error: any) {
          console.error("Auth initialization failed:", error);
          toast({
@@ -95,7 +107,6 @@ export default function SignUpPage() {
      }
    }, [toast]);
 
-  // Ensure reCAPTCHA cleanup
   useEffect(() => {
     return () => {
       console.log("SignUpPage cleanup: Clearing reCAPTCHA verifier if exists.");
@@ -103,18 +114,27 @@ export default function SignUpPage() {
       recaptchaVerifierRef.current = null;
       recaptchaWidgetIdRef.current = null;
       window.signUpConfirmationResult = undefined;
-      window.signUpRecaptchaVerifier?.clear(); // Clear specific signup verifier
+      window.signUpRecaptchaVerifier?.clear();
       window.signUpRecaptchaVerifier = undefined;
     };
-  }, []); // Only run on unmount
+  }, []);
+
+  // Use different schemas based on the selected sign-up method
+  const currentSchema = signUpMethod === 'phone' ? phoneSchema : emailSchema;
 
   const form = useForm<SignUpFormValues>({
-    resolver: zodResolver(phoneSchema), // Use phone schema resolver
-    defaultValues: { firstName: '', lastName: '', phone: '', otp: '' },
+    resolver: zodResolver(currentSchema),
+    defaultValues: { firstName: '', lastName: '', phone: '', email: '', otp: '' },
     mode: 'onChange',
   });
 
-  // Function to set up reCAPTCHA
+  // Reset form validation when signup method changes
+  useEffect(() => {
+    form.reset(); // Reset form values
+    // Need to trigger re-validation based on the new schema, zodResolver might need re-initialization or use a key prop on Form
+  }, [signUpMethod, form]);
+
+
  const setupRecaptcha = (): Promise<RecaptchaVerifier | null> => {
     return new Promise((resolve, reject) => {
       if (!authInstance) {
@@ -129,7 +149,6 @@ export default function SignUpPage() {
         return reject(new Error("Recaptcha container not found"));
       }
 
-      // Use ref to manage the verifier instance
       if (recaptchaVerifierRef.current) {
         console.log("Using existing reCAPTCHA verifier instance via ref for signup.");
         recaptchaVerifierRef.current.render().then((widgetId) => {
@@ -140,7 +159,7 @@ export default function SignUpPage() {
              recaptchaVerifierRef.current?.clear();
              recaptchaVerifierRef.current = null;
              recaptchaWidgetIdRef.current = null;
-             createNewVerifier(resolve, reject); // Create new if re-render fails
+             createNewVerifier(resolve, reject);
          });
       } else {
         console.log("Creating new RecaptchaVerifier instance for signup.");
@@ -161,11 +180,11 @@ export default function SignUpPage() {
             },
             'expired-callback': () => {
                 console.error("reCAPTCHA challenge expired (expired-callback) for signup.");
-                toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
+                toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP/Link again.", variant: "destructive" });
                 recaptchaVerifierRef.current?.clear();
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
-                setOtpSent(false);
+                setOtpSent(false); // Reset phone state
                 reject(new Error("reCAPTCHA expired"));
             },
             'error-callback': (error: any) => {
@@ -174,23 +193,23 @@ export default function SignUpPage() {
                 recaptchaVerifierRef.current?.clear();
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
-                setOtpSent(false);
+                setOtpSent(false); // Reset phone state
                 reject(new Error("reCAPTCHA verification error"));
             }
             });
-            recaptchaVerifierRef.current = verifier; // Store in ref
+            recaptchaVerifierRef.current = verifier;
 
             verifier.render().then((widgetId) => {
-            console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
-            recaptchaWidgetIdRef.current = widgetId; // Store widget ID
-            resolve(verifier);
+                console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
+                recaptchaWidgetIdRef.current = widgetId;
+                resolve(verifier);
             }).catch((error) => {
-            console.error("Signup Recaptcha render failed:", error);
-            toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
-            recaptchaVerifierRef.current?.clear();
-            recaptchaVerifierRef.current = null;
-            recaptchaWidgetIdRef.current = null;
-            reject(error);
+                console.error("Signup Recaptcha render failed:", error);
+                toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
+                recaptchaVerifierRef.current?.clear();
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+                reject(error);
             });
 
         } catch (error) {
@@ -200,18 +219,34 @@ export default function SignUpPage() {
         }
   };
 
-   const handlePhoneSignUp = async (values: SignUpFormValues) => {
+   // Combined handler for form submission
+   const handleSignUp = async (values: SignUpFormValues) => {
+     setLoading(true);
+     const displayName = `${values.firstName} ${values.lastName}`;
+
+     if (signUpMethod === 'phone' && 'phone' in values) {
+       await handlePhoneSignUp(values, displayName);
+     } else if (signUpMethod === 'email' && 'email' in values) {
+       await handleEmailSignIn(values, displayName);
+     } else {
+       console.error("Invalid sign-up method or form values");
+       toast({ title: "Error", description: "Invalid sign-up method selected.", variant: "destructive" });
+       setLoading(false);
+     }
+   };
+
+
+   const handlePhoneSignUp = async (values: Extract<SignUpFormValues, { phone: string }>, displayName: string) => {
     if (!authInstance || !firestore) {
         toast({ title: "Error", description: "Authentication or database service not ready.", variant: "destructive" });
+        setLoading(false);
         return;
     }
-    setLoading(true);
-    const displayName = `${values.firstName} ${values.lastName}`;
 
     try {
         if (!otpSent) {
             // --- Send OTP Phase ---
-            const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
+            const appVerifier = await setupRecaptcha();
             if (!appVerifier) {
                  console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
                  setLoading(false);
@@ -220,19 +255,21 @@ export default function SignUpPage() {
 
              console.log("Using appVerifier for signup:", appVerifier);
              console.log("Attempting to send OTP for signup to:", values.phone);
+             // Ensure reCAPTCHA is rendered before calling signInWithPhoneNumber
+             await appVerifier.render();
 
              const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
 
              window.signUpConfirmationResult = confirmationResult;
              setOtpSent(true);
-             form.reset({...values, otp: ''}); // Clear OTP field after sending
+             form.reset({...values, otp: ''});
              toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
              console.log("Signup OTP sent, confirmation result stored.");
         } else {
             // --- Verify OTP Phase ---
              if (!values.otp || values.otp.length !== 6) {
                 form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
-                 throw new Error("OTP must be 6 digits.");
+                throw new Error("OTP must be 6 digits.");
              }
              if (!window.signUpConfirmationResult) {
                 toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
@@ -247,19 +284,15 @@ export default function SignUpPage() {
 
              if (userCredential.user) {
                  console.log("Phone user confirmed/created:", userCredential.user.uid);
-
-                 // Always update profile name, and create Firestore doc
-                 // The check inside handleUserCreation handles both new/existing logic
                  await handleUserCreation(userCredential.user, displayName, values.phone);
-
                  toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
-                 router.push('/complete-profile'); // Redirect new users to complete profile
+                 router.push('/complete-profile');
 
-                  // Cleanup on success
-                  window.signUpConfirmationResult = undefined;
-                  recaptchaVerifierRef.current?.clear();
-                  recaptchaVerifierRef.current = null;
-                  recaptchaWidgetIdRef.current = null;
+                 // Cleanup global state and verifier on success
+                 window.signUpConfirmationResult = undefined;
+                 recaptchaVerifierRef.current?.clear();
+                 recaptchaVerifierRef.current = null;
+                 recaptchaWidgetIdRef.current = null;
              } else {
                 throw new Error("User object not found after OTP confirmation.");
              }
@@ -269,65 +302,51 @@ export default function SignUpPage() {
          console.error('Error Code:', error.code);
          console.error('Error Message:', error.message);
 
-         if (!otpSent && recaptchaVerifierRef.current) {
-            console.warn("Resetting reCAPTCHA due to Send OTP error during signup.");
-             try {
-                // Explicitly reset the reCAPTCHA widget using its ID if available
-                if (recaptchaWidgetIdRef.current !== null && window.grecaptcha) {
-                     window.grecaptcha.reset(recaptchaWidgetIdRef.current);
-                     console.log("Explicitly reset signup reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
-                } else {
-                     recaptchaVerifierRef.current.clear();
-                }
-            } catch (clearError) {
-                console.error("Error clearing/resetting signup reCAPTCHA:", clearError);
-            } finally {
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
-            }
+         // Attempt to reset reCAPTCHA widget if possible
+         try {
+             if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
+                window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                console.log("Explicitly reset signup reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
+             } else {
+                recaptchaVerifierRef.current?.clear();
+             }
+         } catch (resetError) {
+            console.error("Error clearing/resetting signup reCAPTCHA:", resetError);
+         } finally {
+             recaptchaVerifierRef.current = null;
+             recaptchaWidgetIdRef.current = null;
          }
+
 
          const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
          let description = `Error: ${error.message || 'Unknown error.'}`;
 
-        // Handle specific Firebase Auth errors for better user feedback
-         if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.message?.includes('auth/invalid-recaptcha-token')) {
-            description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
-            setOtpSent(false);
-             recaptchaVerifierRef.current = null; // Ensure verifier is recreated
-             recaptchaWidgetIdRef.current = null;
+         // Specific error handling...
+          if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) {
+            description = 'reCAPTCHA verification failed. Please try again.';
+            setOtpSent(false); // Allow retry
         } else if (error.code === 'auth/invalid-phone-number') {
              description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
              setOtpSent(false);
              form.setValue('phone', '');
         } else if (error.code === 'auth/invalid-verification-code') {
              description = 'Invalid OTP entered. Please try again.';
-             form.setValue('otp', '');
+             form.setValue('otp', ''); // Clear OTP field
         } else if (error.code === 'auth/code-expired') {
              description = 'The verification code has expired. Please send a new one.';
-             setOtpSent(false);
+             setOtpSent(false); // Allow resend
         } else if (error.code === 'auth/too-many-requests') {
              description = 'Too many attempts. Please try again later.';
-             setOtpSent(false);
-        } else if (error.code?.includes('auth/network-request-failed')) {
-             description = 'Network error. Please check your connection and try again.';
-        } else if (error.code === 'auth/configuration-not-found') {
-            description = 'Firebase configuration error. Ensure Phone Auth is enabled.';
-            setOtpSent(false);
-        } else if (error.code === 'auth/missing-client-identifier' || error.message?.includes('missing client identifier')) {
-            description = 'reCAPTCHA configuration error. Check Firebase setup and domain whitelisting.';
-            setOtpSent(false);
-        }
+             // Keep otpSent state as is, just inform user
+        } // Add other specific errors as needed
 
          toast({
             title: title,
             description: description,
             variant: 'destructive',
          });
-         if (error.message.includes('expired') || error.code === 'auth/session-expired') {
-             setOtpSent(false);
-             recaptchaVerifierRef.current = null; // Ensure verifier is recreated
-             recaptchaWidgetIdRef.current = null;
+         if (error.code === 'auth/session-expired' || error.message?.includes('expired')) {
+             setOtpSent(false); // Reset if session expired
          }
     } finally {
         setLoading(false);
@@ -335,7 +354,7 @@ export default function SignUpPage() {
   };
 
     const handleGoogleSignUp = async () => {
-        if (!authInstance) {
+        if (!authInstance || !firestore) {
             toast({ title: "Error", description: "Authentication service not ready.", variant: "destructive" });
             return;
         }
@@ -346,14 +365,14 @@ export default function SignUpPage() {
             const user = result.user;
             console.log("Google Sign-Up/Login Successful:", user.uid);
 
-            // Create/update user profile in Firestore
             await handleUserCreation(user, user.displayName || 'Unnamed User');
 
             toast({ title: "Sign Up Successful", description: "Please complete your profile." });
-            router.push('/complete-profile'); // Always redirect Google sign-ups to complete profile for now
+            router.push('/complete-profile');
 
         } catch (error: any) {
             console.error("Google Sign-Up Error:", error);
+            // Handle specific errors like popup closed by user, network error, etc.
             toast({
                 title: "Google Sign-Up Failed",
                 description: error.message || "Could not sign up with Google.",
@@ -364,7 +383,52 @@ export default function SignUpPage() {
         }
     };
 
+    const handleEmailSignIn = async (values: Extract<SignUpFormValues, { email: string }>, displayName: string) => {
+       if (!authInstance || !firestore) {
+         toast({ title: "Error", description: "Service not ready.", variant: "destructive" });
+         setLoading(false);
+         return;
+       }
+
+       const actionCodeSettings = {
+         // URL you want to redirect back to. The domain (www.example.com) for this
+         // URL must be in the authorized domains list in the Firebase Console.
+         // Redirect to complete profile after clicking link and signing in
+         url: `${window.location.origin}/`, // Redirect to home page, check for sign-in link there
+         handleCodeInApp: true, // This must be true.
+       };
+
+       try {
+         await sendSignInLinkToEmail(authInstance, values.email, actionCodeSettings);
+         // The link was successfully sent. Inform the user.
+         // Save the email locally so you don't need to ask the user for it again
+         // if they open the link on the same device.
+         window.localStorage.setItem('emailForSignIn', values.email);
+         // Save the name temporarily as well, maybe in session storage or pass via URL param if safe
+         window.localStorage.setItem('nameForSignIn', displayName);
+
+         toast({
+           title: 'Check your email',
+           description: `A sign-in link has been sent to ${values.email}. Open the link to complete sign-up.`,
+         });
+         // Optionally clear the form or disable it
+         form.reset();
+
+       } catch (error: any) {
+         console.error('Error sending email link:', error);
+         toast({
+           title: 'Failed to Send Link',
+           description: error.message || 'Could not send sign-in link.',
+           variant: 'destructive',
+         });
+       } finally {
+            setLoading(false);
+       }
+   };
+
+
     // Handles Firestore user document creation/update for all sign-up methods
+    // This function might be called AFTER email link sign-in is completed on the redirect page.
     const handleUserCreation = async (user: any, name: string, phone: string | null = null) => {
         if (!user || !firestore) return;
 
@@ -372,40 +436,63 @@ export default function SignUpPage() {
         try {
             const docSnap = await getDoc(userDocRef);
             if (!docSnap.exists()) {
-                // Only create the document if it truly doesn't exist
+                // User is new, create Firestore document
                 await setDoc(userDocRef, {
                     uid: user.uid,
                     name: name,
-                    email: user.email || null, // Get email from Google auth if available
-                    phone: phone || user.phoneNumber || null, // Get phone from Phone auth or Google if linked
+                    email: user.email || null,
+                    phone: phone || user.phoneNumber || null, // Use provided phone or from auth
                     createdAt: new Date(),
-                    isProfileComplete: false // Always false on initial creation
-                }, { merge: false }); // Use merge: false to ensure it's a creation
+                    isProfileComplete: false // Mark as incomplete, redirect handled after this
+                }, { merge: false }); // Don't merge if creating new
                  console.log("Firestore document created for new user:", user.uid);
             } else {
-                // If doc exists, ensure name is updated (e.g., if user logged in via phone first then Google)
-                if (docSnap.data()?.name !== name) {
-                    await updateProfile(user, { displayName: name }); // Update Auth profile
-                    await setDoc(userDocRef, { name: name }, { merge: true }); // Update Firestore name
-                    console.log("Updated display name for existing user:", user.uid);
+                // User exists, check if name needs update (e.g., Google sign-in after phone)
+                const existingData = docSnap.data();
+                let updateData: { [key: string]: any } = {};
+                if (existingData?.name !== name) {
+                    updateData.name = name;
+                    // Also update Auth profile if different
+                    if (user.displayName !== name) {
+                         try {
+                            await updateProfile(user, { displayName: name });
+                            console.log("Auth display name updated.");
+                         } catch (authProfileError) {
+                            console.warn("Could not update Auth display name:", authProfileError);
+                         }
+                    }
                 }
-                 console.log("User document already exists:", user.uid);
+                 // Ensure phone number is updated if signing up via phone after other methods
+                 if (phone && existingData?.phone !== phone) {
+                    updateData.phone = phone;
+                 }
+
+                 if (Object.keys(updateData).length > 0) {
+                     await setDoc(userDocRef, updateData, { merge: true });
+                     console.log("Updated details for existing user:", user.uid, updateData);
+                 } else {
+                     console.log("User document already exists and matches:", user.uid);
+                 }
+
+                 // Redirect to complete profile only if Firestore flag is false
+                 if (!existingData?.isProfileComplete) {
+                     router.push('/complete-profile');
+                     return; // Important: Return after redirect
+                 }
+                 // If profile is complete, redirect home
+                  router.push('/');
             }
+            // Redirect new users or existing users with incomplete profiles
+            router.push('/complete-profile');
+
         } catch (error) {
             console.error("Error creating/updating Firestore user document:", error);
             toast({ title: "Profile Error", description: "Could not save initial profile data.", variant: "destructive" });
-            // Decide how to handle this - maybe still redirect?
+             // Redirect home as a fallback on error
+             router.push('/');
         }
     };
 
-    const handleEmailOtpSignUp = async () => {
-         // TODO: Implement Email OTP/Link Sign-Up logic
-         // This would involve:
-         // 1. Collecting the user's email address.
-         // 2. Calling `sendSignInLinkToEmail` or a custom OTP function.
-         // 3. Handling the link/OTP verification on a separate page or logic branch.
-         toast({ title: "Coming Soon", description: "Email Sign-Up is under development.", variant: "default" });
-     };
 
   return (
     <div className="flex items-center justify-center py-12 relative">
@@ -414,7 +501,7 @@ export default function SignUpPage() {
                  <LoadingSpinner />
             </div>
         )}
-      {/* Container MUST exist in the DOM for invisible reCAPTCHA */}
+      {/* Container MUST exist in the DOM for invisible reCAPTCHA (only needed for phone) */}
       <div id={recaptchaContainerId} className="absolute -top-96 -left-96"></div>
 
       <Card className="mx-auto max-w-sm w-full">
@@ -429,18 +516,39 @@ export default function SignUpPage() {
                 Sign Up with Google
             </Button>
 
-            {/* Email OTP/Link Button (Placeholder) */}
-            <Button variant="outline" className="w-full" onClick={handleEmailOtpSignUp} disabled={true} >
-                {/* <Mail className="mr-2 h-4 w-4" /> */} {/* Add Mail icon if desired */}
-                Sign Up with Email (Coming Soon)
-            </Button>
+            {/* Method Selection Buttons */}
+            <div className="flex gap-2">
+                <Button
+                    variant={signUpMethod === 'email' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => setSignUpMethod('email')}
+                    disabled={loading}
+                >
+                    <Mail className="mr-2 h-4 w-4" /> Email Link
+                </Button>
+                 <Button
+                    variant={signUpMethod === 'phone' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => setSignUpMethod('phone')}
+                    disabled={loading}
+                 >
+                    {/* Phone icon placeholder */}
+                     <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                    Phone OTP
+                </Button>
+            </div>
+
 
              <Separator />
 
-            {/* Phone Sign Up Form */}
+            {/* Dynamic Form based on selected method */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handlePhoneSignUp)} className="grid gap-4">
-               <CardDescription className="text-center">Or sign up with phone</CardDescription>
+            <form onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
+               <CardDescription className="text-center">
+                    {signUpMethod === 'email' ? 'Enter your details to sign up with Email' : 'Enter your details to sign up with Phone'}
+               </CardDescription>
+
+               {/* Common Fields */}
                <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -449,7 +557,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>First name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Max" {...field} disabled={loading || otpSent}/>
+                            <Input placeholder="Your" {...field} disabled={loading || (signUpMethod === 'phone' && otpSent)} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -462,7 +570,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>Last name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Robinson" {...field} disabled={loading || otpSent}/>
+                            <Input placeholder="Name" {...field} disabled={loading || (signUpMethod === 'phone' && otpSent)} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -471,49 +579,85 @@ export default function SignUpPage() {
                   </div>
 
                 {/* Phone Specific Fields */}
-                <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                        <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
-                    </FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
-                />
-                {otpSent && (
-                        <FormField
+                {signUpMethod === 'phone' && (
+                  <>
+                    <FormField
                         control={form.control}
-                        name="otp"
+                        name="phone"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Enter OTP</FormLabel>
+                            <FormLabel>Phone Number</FormLabel>
                             <FormControl>
-                                <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
+                                <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
                             </FormControl>
                             <FormMessage />
                             </FormItem>
                         )}
+                    />
+                    {otpSent && (
+                        <FormField
+                            control={form.control}
+                            name="otp"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Enter OTP</FormLabel>
+                                <FormControl>
+                                    <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
                         />
-                )}
-                <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Sign Up' : 'Send OTP')}
+                    )}
+                    <Button type="submit" className="w-full" disabled={loading}>
+                        {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Sign Up' : 'Send OTP')}
                     </Button>
                     {otpSent && (
-                    <Button variant="link" size="sm" onClick={() => {
-                        setOtpSent(false);
-                        form.reset({...form.getValues(), otp: ''}); // Reset OTP field
-                        window.signUpConfirmationResult = undefined;
-                        recaptchaVerifierRef.current?.clear();
-                        recaptchaVerifierRef.current = null;
-                        recaptchaWidgetIdRef.current = null;
-                    }} className="text-sm" type="button" disabled={loading}>
-                        Change Number or Resend OTP
-                    </Button>
+                        <Button variant="link" size="sm" onClick={() => {
+                            setOtpSent(false);
+                            form.reset({...form.getValues(), otp: ''});
+                            window.signUpConfirmationResult = undefined;
+                            // Safely clear reCAPTCHA
+                             try {
+                                if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
+                                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                                } else {
+                                    recaptchaVerifierRef.current?.clear();
+                                }
+                            } catch (error) {
+                                console.error("Error resetting reCAPTCHA on change number:", error);
+                            } finally {
+                                recaptchaVerifierRef.current = null;
+                                recaptchaWidgetIdRef.current = null;
+                            }
+                        }} className="text-sm" type="button" disabled={loading}>
+                            Change Number or Resend OTP
+                        </Button>
                     )}
+                  </>
+                )}
+
+                 {/* Email Specific Fields */}
+                {signUpMethod === 'email' && (
+                    <>
+                        <FormField
+                            control={form.control}
+                            name="email"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Email Address</FormLabel>
+                                <FormControl>
+                                <Input type="email" placeholder="you@example.com" {...field} disabled={loading} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                        <Button type="submit" className="w-full" disabled={loading}>
+                             {loading ? 'Sending Link...' : 'Send Sign-Up Link'}
+                        </Button>
+                    </>
+                )}
             </form>
           </Form>
           <div className="mt-4 text-center text-sm">
@@ -527,3 +671,4 @@ export default function SignUpPage() {
     </div>
   );
 }
+
