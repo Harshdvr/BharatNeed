@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -30,6 +31,8 @@ import {
   getAdditionalUserInfo, // Import getAdditionalUserInfo
   updateProfile, // Import updateProfile
   sendSignInLinkToEmail, // Import Email Link functions
+  isSignInWithEmailLink, // To check if the link is a sign-in link
+  signInWithEmailLink // To complete the sign-in
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -86,6 +89,12 @@ export default function LoginPage() {
     try {
         const auth = ensureAuthInitialized();
         setAuthInstance(auth);
+
+        // Check if the URL is an email sign-in link
+        if (auth && isSignInWithEmailLink(auth, window.location.href)) {
+            handleCompleteEmailSignIn(auth);
+        }
+
     } catch (error: any) {
         console.error("Auth initialization failed:", error);
         toast({
@@ -94,8 +103,9 @@ export default function LoginPage() {
             variant: "destructive",
         });
     }
-  }, [toast]);
+  }, [toast]); // Only run on mount
 
+  // Separate useEffect for cleanup
   useEffect(() => {
     return () => {
         console.log("LoginPage cleanup: Clearing reCAPTCHA verifier if exists.");
@@ -103,10 +113,19 @@ export default function LoginPage() {
         recaptchaVerifierRef.current = null;
         recaptchaWidgetIdRef.current = null;
         window.loginConfirmationResult = undefined;
-        window.loginRecaptchaVerifier?.clear();
+        // Safely attempt to clear the window object property
+        if (window.loginRecaptchaVerifier && typeof window.loginRecaptchaVerifier.clear === 'function') {
+          try {
+             window.loginRecaptchaVerifier.clear();
+             console.log("Cleared window.loginRecaptchaVerifier");
+          } catch (e) {
+             console.error("Error clearing window.loginRecaptchaVerifier:", e);
+          }
+        }
         window.loginRecaptchaVerifier = undefined;
     };
   }, []);
+
 
   // Use different schemas based on the selected login method
   const currentSchema = loginMethod === 'phone' ? phoneSchema : emailSchema;
@@ -139,22 +158,26 @@ export default function LoginPage() {
         return reject(new Error("Recaptcha container not found"));
       }
 
+      // Clean up previous verifier instance if exists in ref
       if (recaptchaVerifierRef.current) {
-        console.log("Using existing reCAPTCHA verifier instance via ref for login.");
-         recaptchaVerifierRef.current.render().then((widgetId) => {
-             recaptchaWidgetIdRef.current = widgetId;
-             resolve(recaptchaVerifierRef.current);
-         }).catch((error) => {
-             console.error("Error re-rendering existing reCAPTCHA:", error);
-             recaptchaVerifierRef.current?.clear();
-             recaptchaVerifierRef.current = null;
-             recaptchaWidgetIdRef.current = null;
-             createNewVerifier(resolve, reject);
-         });
-      } else {
+         console.log("Clearing previous reCAPTCHA verifier instance from ref.");
+         recaptchaVerifierRef.current.clear();
+         recaptchaVerifierRef.current = null;
+         recaptchaWidgetIdRef.current = null;
+      }
+       // Also clear window property if exists
+        if (window.loginRecaptchaVerifier) {
+            try {
+                window.loginRecaptchaVerifier.clear();
+                console.log("Cleared previous window.loginRecaptchaVerifier.");
+            } catch (e) {
+                console.error("Error clearing previous window.loginRecaptchaVerifier:", e);
+            }
+            window.loginRecaptchaVerifier = undefined;
+        }
+
         console.log("Creating new RecaptchaVerifier instance for login.");
         createNewVerifier(resolve, reject);
-      }
     });
   };
 
@@ -188,7 +211,8 @@ export default function LoginPage() {
                 }
             });
 
-            recaptchaVerifierRef.current = verifier;
+            recaptchaVerifierRef.current = verifier; // Store in ref
+            window.loginRecaptchaVerifier = verifier; // Also store in window for this example
 
             verifier.render().then((widgetId) => {
                 console.log("reCAPTCHA rendered successfully. Widget ID:", widgetId);
@@ -197,9 +221,10 @@ export default function LoginPage() {
             }).catch((error) => {
                 console.error("Recaptcha render failed:", error);
                 toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Refresh might help.", variant: "destructive" });
-                recaptchaVerifierRef.current?.clear();
+                recaptchaVerifierRef.current?.clear(); // Clean up on render fail
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
+                window.loginRecaptchaVerifier = undefined;
                 reject(error);
             });
         } catch (error) {
@@ -233,7 +258,7 @@ export default function LoginPage() {
      try {
         if (!otpSent) {
             // --- Send OTP Phase ---
-            const appVerifier = await setupRecaptcha();
+            const appVerifier = await setupRecaptcha(); // Use the setup function which now handles cleanup
             if (!appVerifier) {
                  console.error("reCAPTCHA setup failed, cannot send OTP.");
                  setLoading(false);
@@ -242,13 +267,13 @@ export default function LoginPage() {
 
             console.log("Using appVerifier:", appVerifier);
             console.log("Attempting to send OTP to:", values.phone);
-            await appVerifier.render();
 
+            // signInWithPhoneNumber uses the rendered reCAPTCHA implicitly
             const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
 
-            window.loginConfirmationResult = confirmationResult;
+            window.loginConfirmationResult = confirmationResult; // Store globally for simplicity
             setOtpSent(true);
-            form.reset({...values, otp: ''});
+            // form.reset({...values, otp: ''}); // Keep phone number in form, reset OTP
             toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
             console.log("OTP sent successfully. Confirmation result stored.");
         } else {
@@ -260,9 +285,7 @@ export default function LoginPage() {
             if (!window.loginConfirmationResult) {
                 toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
                 setOtpSent(false);
-                recaptchaVerifierRef.current?.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                // No need to clear ref here, setupRecaptcha will handle it on next attempt
                 throw new Error("Confirmation session expired or invalid.");
             }
 
@@ -273,34 +296,18 @@ export default function LoginPage() {
 
              await checkProfileAndRedirect(userCredential.user);
 
+             // Cleanup global state on success
              window.loginConfirmationResult = undefined;
-             recaptchaVerifierRef.current?.clear();
-             recaptchaVerifierRef.current = null;
-             recaptchaWidgetIdRef.current = null;
+             // No need to clear ref here, useEffect cleanup will handle it, or next setupRecaptcha
         }
     } catch (error: any) {
         console.error(`Phone login error (${otpSent ? 'Verify OTP' : 'Send OTP'}):`, error);
         console.error('Error Code:', error.code);
         console.error('Error Message:', error.message);
 
-         // Attempt reset on error if verifier exists
-         if (recaptchaVerifierRef.current) {
-            console.warn("Resetting reCAPTCHA due to login error.");
-             try {
-                 if (recaptchaWidgetIdRef.current !== null && window.grecaptcha) {
-                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
-                    console.log("Explicitly reset reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
-                 } else {
-                    recaptchaVerifierRef.current.clear();
-                 }
-             } catch (resetError) {
-                console.error("Error clearing/resetting reCAPTCHA:", resetError);
-             } finally {
-                 recaptchaVerifierRef.current = null;
-                 recaptchaWidgetIdRef.current = null;
-             }
-         }
-
+         // Attempt reset on error if verifier exists in ref (setupRecaptcha should handle this on retry anyway)
+         // It's generally safer to let setupRecaptcha manage the cleanup and recreation.
+         // if (recaptchaVerifierRef.current) { ... }
 
         const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
         let description = `Error: ${error.message || 'Unknown error.'}`;
@@ -312,16 +319,16 @@ export default function LoginPage() {
         } else if (error.code === 'auth/invalid-phone-number') {
             description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
              setOtpSent(false);
-             form.setValue('phone', '');
+             // form.setValue('phone', ''); // Don't clear, let user correct it
         } else if (error.code === 'auth/invalid-verification-code') {
             description = 'Invalid OTP entered. Please try again.';
-            form.setValue('otp', '');
+            form.setValue('otp', ''); // Clear OTP field
         } else if (error.code === 'auth/code-expired') {
             description = 'The verification code has expired. Please send a new one.';
             setOtpSent(false);
         } else if (error.code === 'auth/too-many-requests') {
              description = 'Too many attempts. Please try again later.';
-             setOtpSent(false);
+             setOtpSent(false); // Allow retry after some time
         } // Add other specific errors
 
         toast({
@@ -346,7 +353,7 @@ export default function LoginPage() {
      }
 
      const actionCodeSettings = {
-        url: `${window.location.origin}/`, // Redirect to home after successful login
+        url: `${window.location.origin}/login`, // Redirect back to login page to complete sign-in
         handleCodeInApp: true,
      };
 
@@ -371,6 +378,46 @@ export default function LoginPage() {
      }
    };
 
+   // Function to complete email sign-in
+   const handleCompleteEmailSignIn = async (auth: Auth) => {
+      setLoading(true);
+      let email = window.localStorage.getItem('emailForSignIn');
+      if (!email) {
+         // User opened the link on a different device. To prevent session fixation
+         // attacks, ask the user to provide the email again. For example:
+         email = window.prompt('Please provide your email for confirmation');
+         if (!email) {
+             toast({ title: 'Sign In Failed', description: 'Email is required to complete sign-in.', variant: 'destructive' });
+             setLoading(false);
+             return;
+         }
+      }
+
+      try {
+         const userCredential = await signInWithEmailLink(auth, email, window.location.href);
+         // Clear email from storage.
+         window.localStorage.removeItem('emailForSignIn');
+         console.log('User signed in with email link:', userCredential.user.uid);
+         toast({ title: 'Login Successful', description: 'Welcome!' });
+
+         // Check if this is a new user and redirect to profile completion if needed
+         await checkProfileAndRedirect(userCredential.user);
+
+         // Remove the sign-in link parameters from the URL
+         window.history.replaceState({}, document.title, window.location.pathname);
+
+      } catch (error: any) {
+         console.error('Error signing in with email link:', error);
+         toast({
+            title: 'Sign In Failed',
+            description: error.message || 'Could not sign in with email link.',
+            variant: 'destructive',
+         });
+      } finally {
+         setLoading(false);
+      }
+   };
+
 
     const handleGoogleSignIn = async () => {
         if (!authInstance) {
@@ -389,11 +436,16 @@ export default function LoginPage() {
 
         } catch (error: any) {
             console.error("Google Sign-In Error:", error);
-            toast({
-                title: "Google Sign-In Failed",
-                description: error.message || "Could not sign in with Google.",
-                variant: "destructive",
-            });
+            // Handle popup closed error specifically
+            if (error.code === 'auth/popup-closed-by-user') {
+                 toast({ title: "Sign-In Cancelled", description: "Google Sign-In window was closed.", variant: "default" });
+            } else {
+                toast({
+                    title: "Google Sign-In Failed",
+                    description: error.message || "Could not sign in with Google.",
+                    variant: "destructive",
+                });
+            }
         } finally {
             setLoading(false);
         }
@@ -409,17 +461,20 @@ export default function LoginPage() {
              // Try to get isNewUser info - might not always be available
              let isNewUser = false;
              try {
+                 // Cast user to the expected type if necessary, or handle potential mismatch
                  const additionalUserInfo = getAdditionalUserInfo({user: user} as any);
                  isNewUser = additionalUserInfo?.isNewUser ?? false;
              } catch (infoError) {
                  console.warn("Could not get additional user info:", infoError);
-                 // Assume existing if info cannot be retrieved
+                 // Assume existing if info cannot be retrieved, check Firestore doc existence
+                 isNewUser = !docSnap.exists(); // Fallback: Consider new if doc doesn't exist
              }
 
 
-             // If it's flagged as new, or Firestore doc doesn't exist, or profile is explicitly incomplete
-            if (isNewUser || !docSnap.exists() || !docSnap.data()?.isProfileComplete) {
-                 // Ensure Firestore doc exists (especially for new Google users)
+             // If Firestore doc doesn't exist, or profile is explicitly incomplete
+            if (!docSnap.exists() || !docSnap.data()?.isProfileComplete) {
+                 // Ensure Firestore doc exists (especially for new Google/Email users)
+                 // This covers the case where a user logs in via Google/Email first
                  if (!docSnap.exists()) {
                       await setDoc(userDocRef, {
                          uid: user.uid,
@@ -431,9 +486,9 @@ export default function LoginPage() {
                      }, { merge: true }); // Merge to avoid overwriting if created concurrently
                       console.log("Created Firestore doc for new user:", user.uid);
                  } else if (!docSnap.data()?.isProfileComplete && user.displayName && docSnap.data()?.name !== user.displayName) {
-                     // If profile exists but is incomplete, update name from Google if different
+                     // If profile exists but is incomplete, update name from Auth provider if different
                      await setDoc(userDocRef, { name: user.displayName }, { merge: true });
-                      console.log("Updated name from Google for incomplete profile:", user.uid);
+                      console.log("Updated name from Auth provider for incomplete profile:", user.uid);
                  }
 
                  toast({ title: isNewUser ? 'Sign Up Successful' : 'Login Successful', description: 'Please complete your profile.' });
@@ -445,7 +500,7 @@ export default function LoginPage() {
          } catch (firestoreError) {
              console.error("Error checking/updating user profile in Firestore:", firestoreError);
              toast({ title: "Profile Check Failed", description: "Could not verify profile status. Redirecting home.", variant: "destructive" });
-             router.push('/');
+             router.push('/'); // Fallback redirect home
          }
     };
 
@@ -540,11 +595,9 @@ export default function LoginPage() {
                         {otpSent && (
                             <Button variant="link" size="sm" onClick={() => {
                                 setOtpSent(false);
-                                form.reset({...form.getValues(), otp: ''});
+                                form.reset({...form.getValues(), otp: ''}); // Keep phone number, reset OTP
                                 window.loginConfirmationResult = undefined;
-                                recaptchaVerifierRef.current?.clear();
-                                recaptchaVerifierRef.current = null;
-                                recaptchaWidgetIdRef.current = null;
+                                // No need to clear verifier ref here, setupRecaptcha handles it on next send attempt
                             }} className="text-sm" type="button" disabled={loading}>
                                 Change Number or Resend OTP
                             </Button>
@@ -587,4 +640,3 @@ export default function LoginPage() {
     </>
   );
 }
-```
