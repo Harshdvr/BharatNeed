@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -13,7 +12,7 @@ import * as z from 'zod';
 import {
   Form,
   FormControl,
-  FormDescription, // Import FormDescription
+  // FormDescription, // No longer needed for password
   FormField,
   FormItem,
   FormLabel,
@@ -22,17 +21,18 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth, firestore
 import {
-  createUserWithEmailAndPassword,
+  // createUserWithEmailAndPassword, // Removed
   signInWithPhoneNumber,
   RecaptchaVerifier,
   updateProfile,
   ConfirmationResult,
   Auth, // Import Auth type
   getAdditionalUserInfo, // Import getAdditionalUserInfo
+  getAuth, // Import getAuth if not already imported implicitly by ensureAuthInitialized
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed Tabs
 import LoadingSpinner from '@/components/loading-spinner';
 import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
 
@@ -42,17 +42,7 @@ const commonSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
 });
 
-// Email signup schema
-const emailSchema = commonSchema.extend({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  confirmPassword: z.string().min(1, 'Please confirm your password'),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ['confirmPassword'], // Set error on confirmPassword field
-});
-
-// Phone signup schema
+// Phone signup schema only
 const phoneSchema = commonSchema.extend({
     phone: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Invalid phone number format (e.g., +919876543210)'),
     otp: z.string().optional(),
@@ -61,15 +51,14 @@ const phoneSchema = commonSchema.extend({
     path: ["otp"],
 });
 
-// Combined type for form values
-type SignUpFormValues = z.infer<typeof emailSchema> | z.infer<typeof phoneSchema>;
-type SignUpType = 'email' | 'phone';
+// Combined type for form values - now only phone
+type SignUpFormValues = z.infer<typeof phoneSchema>;
+// type SignUpType = 'email' | 'phone'; // Removed, only phone
 
 // Declare window object augmentation for reCAPTCHA (keep as is for simplicity)
 declare global {
     interface Window {
         grecaptcha?: any; // For potential direct reset access
-        // signUpRecaptchaVerifier?: RecaptchaVerifier; // Removed, managed by ref now
         signUpConfirmationResult?: ConfirmationResult; // Keep using window object for simplicity for now
     }
 }
@@ -79,15 +68,30 @@ export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [signUpType, setSignUpType] = useState<SignUpType>('email');
+  // const [signUpType, setSignUpType] = useState<SignUpType>('phone'); // Default to phone
   const [otpSent, setOtpSent] = useState(false);
   const recaptchaContainerId = "recaptcha-container-signup"; // Define ID
-  const authInstance: Auth | null = auth; // Use the imported auth instance
+  const [authInstance, setAuthInstance] = useState<Auth | null>(null);
 
   // Use refs to manage Firebase objects safely
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaWidgetIdRef = useRef<number | null>(null);
 
+
+  // Ensure Firebase Auth is initialized
+   useEffect(() => {
+     try {
+         const auth = getAuth(auth); // Ensure auth is initialized from clientApp
+         setAuthInstance(auth);
+     } catch (error: any) {
+         console.error("Auth initialization failed:", error);
+         toast({
+             title: "Initialization Error",
+             description: "Could not initialize authentication. Please try refreshing.",
+             variant: "destructive",
+         });
+     }
+   }, [toast]);
 
   // Ensure reCAPTCHA cleanup
   useEffect(() => {
@@ -98,15 +102,11 @@ export default function SignUpPage() {
       recaptchaWidgetIdRef.current = null;
       window.signUpConfirmationResult = undefined; // Clear window object too
     };
-  }, [signUpType]); // Depend on signUpType to trigger cleanup on switch
-
-  const currentSchema = signUpType === 'email' ? emailSchema : phoneSchema;
+  }, []); // Only run on unmount
 
   const form = useForm<SignUpFormValues>({
-    resolver: zodResolver(currentSchema),
-    defaultValues: signUpType === 'email'
-        ? { firstName: '', lastName: '', email: '', password: '', confirmPassword: '' }
-        : { firstName: '', lastName: '', phone: '', otp: '' },
+    resolver: zodResolver(phoneSchema),
+    defaultValues: { firstName: '', lastName: '', phone: '', otp: '' },
     mode: 'onChange',
   });
 
@@ -196,170 +196,155 @@ export default function SignUpPage() {
     setLoading(true);
     const displayName = `${values.firstName} ${values.lastName}`;
 
-    if (signUpType === 'email' && 'email' in values && 'password' in values) {
-
-      console.log("Attempting email signup for:", values.email);
-      try {
-        const userCredential = await createUserWithEmailAndPassword(authInstance, values.email!, values.password!);
-        await updateProfile(userCredential.user, { displayName });
-
-        // Create initial user profile in Firestore
-        const userDocRef = doc(firestore, "users", userCredential.user.uid);
-        await setDoc(userDocRef, {
-            uid: userCredential.user.uid,
-            name: displayName,
-            email: userCredential.user.email,
-            createdAt: new Date(),
-            isProfileComplete: false // Flag to indicate profile needs completion
-        }, { merge: true }); // Use merge to avoid overwriting existing data if any
-
-        console.log('User signed up with email:', userCredential.user.uid, " Name:", displayName);
-        toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
-        router.push('/complete-profile'); // Redirect to complete profile page
-      } catch (error: any) {
-        console.error('Email sign up error:', error);
-        console.error('Error Code:', error.code);
-        console.error('Error Message:', error.message);
-        toast({
-          title: 'Sign Up Failed',
-          description: error.code === 'auth/email-already-in-use'
-            ? 'This email is already registered. Try logging in.'
-            : `Error: ${error.message || 'Unknown error.'}`,
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    } else if (signUpType === 'phone' && 'phone' in values) {
-        try {
-            if (!otpSent) {
-                // --- Send OTP Phase ---
-                const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
-                if (!appVerifier) {
-                     console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
-                     setLoading(false); // Stop loading if setup fails
-                     return; // Exit if setup failed
-                }
-
-                 console.log("Using appVerifier for signup:", appVerifier);
-                 console.log("Attempting to send OTP for signup to:", values.phone);
-
-                 const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
-
-                 window.signUpConfirmationResult = confirmationResult; // Store globally for now
-                 setOtpSent(true);
-                 form.reset({...values, otp: ''}); // Clear OTP field after sending
-                 toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
-                 console.log("Signup OTP sent, confirmation result stored.");
-            } else {
-                // --- Verify OTP Phase ---
-                 if (!values.otp) {
-                     form.setError("otp", { type: "manual", message: "OTP is required." });
-                     throw new Error("OTP is required.");
-                 }
-                 if (values.otp.length !== 6) {
-                     form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
-                     throw new Error("OTP must be 6 digits.");
-                 }
-                 if (!window.signUpConfirmationResult) {
-                    toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
-                    setOtpSent(false); // Reset state to allow resend
-                    recaptchaVerifierRef.current?.clear(); // Cleanup verifier ref
-                    recaptchaVerifierRef.current = null;
-                    recaptchaWidgetIdRef.current = null;
-                    throw new Error("Confirmation session expired or invalid.");
-                 }
-                 console.log("Attempting to confirm signup OTP:", values.otp);
-                 const userCredential = await window.signUpConfirmationResult.confirm(values.otp);
-
-                 if (userCredential.user) {
-                     console.log("Phone user confirmed/created:", userCredential.user.uid);
-
-                     const additionalUserInfo = getAdditionalUserInfo(userCredential);
-                     const isNewUser = additionalUserInfo?.isNewUser ?? false;
-
-                     if (isNewUser) {
-                         await updateProfile(userCredential.user, { displayName });
-                         // Create initial user profile in Firestore for new phone users
-                        const userDocRef = doc(firestore, "users", userCredential.user.uid);
-                        await setDoc(userDocRef, {
-                            uid: userCredential.user.uid,
-                            name: displayName,
-                            phone: userCredential.user.phoneNumber,
-                            createdAt: new Date(),
-                            isProfileComplete: false // Flag to indicate profile needs completion
-                        }, { merge: true });
-                         toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
-                         router.push('/complete-profile'); // Redirect new users to complete profile
-                     } else {
-                         // Existing user logged in via phone
-                         toast({ title: 'Login Successful', description: 'Welcome back!' });
-                         router.push('/'); // Redirect existing users to home
-                     }
-
-                      // Cleanup on success
-                      window.signUpConfirmationResult = undefined;
-                      recaptchaVerifierRef.current?.clear();
-                      recaptchaVerifierRef.current = null;
-                      recaptchaWidgetIdRef.current = null;
-                 } else {
-                    throw new Error("User object not found after OTP confirmation.");
-                 }
+    // --- Phone Signup Only ---
+    try {
+        if (!otpSent) {
+            // --- Send OTP Phase ---
+            const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
+            if (!appVerifier) {
+                 console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
+                 setLoading(false); // Stop loading if setup fails
+                 return; // Exit if setup failed
             }
-        } catch (error: any) {
-             console.error(`Phone sign up error (${otpSent ? 'Verify OTP' : 'Send OTP'}):`, error);
-             console.error('Error Code:', error.code);
-             console.error('Error Message:', error.message);
 
-             if (!otpSent && recaptchaVerifierRef.current) {
-                console.warn("Resetting reCAPTCHA due to Send OTP error during signup.");
-                 try {
-                    recaptchaVerifierRef.current.clear();
-                } catch (clearError) {
-                    console.error("Error clearing reCAPTCHA:", clearError);
-                } finally {
-                    recaptchaVerifierRef.current = null;
-                    recaptchaWidgetIdRef.current = null;
-                }
+             console.log("Using appVerifier for signup:", appVerifier);
+             console.log("Attempting to send OTP for signup to:", values.phone);
+
+             const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
+
+             window.signUpConfirmationResult = confirmationResult; // Store globally for now
+             setOtpSent(true);
+             form.reset({...values, otp: ''}); // Clear OTP field after sending
+             toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
+             console.log("Signup OTP sent, confirmation result stored.");
+        } else {
+            // --- Verify OTP Phase ---
+             if (!values.otp) {
+                 form.setError("otp", { type: "manual", message: "OTP is required." });
+                 throw new Error("OTP is required.");
              }
-
-             const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
-             let description = `Error: ${error.message || 'Unknown error.'}`;
-
-            if (error.code === 'auth/captcha-check-failed') {
-                description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
-                setOtpSent(false);
-            } else if (error.code === 'auth/invalid-phone-number') {
-                 description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
-            } else if (error.code === 'auth/invalid-verification-code') {
-                 description = 'Invalid OTP entered. Please try again.';
-                 form.setValue('otp', '');
-            } else if (error.code === 'auth/code-expired') {
-                 description = 'The verification code has expired. Please send a new one.';
-                 setOtpSent(false);
-            } else if (error.code === 'auth/too-many-requests') {
-                 description = 'Too many attempts. Please try again later.';
-                 setOtpSent(false);
-            } else if (error.code?.includes('auth/network-request-failed')) {
-                 description = 'Network error. Please check your connection and try again.';
-            } else if (error.code === 'auth/api-key-not-valid' || error.message?.includes('api-key-not-valid')) {
-                 description = 'Invalid Firebase API Key or configuration. Please check your setup.';
+             if (values.otp.length !== 6) {
+                 form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
+                 throw new Error("OTP must be 6 digits.");
              }
-
-             toast({
-                title: title,
-                description: description,
-                variant: 'destructive',
-             });
-             if (error.message.includes('expired') || error.code === 'auth/session-expired') {
-                 setOtpSent(false);
+             if (!window.signUpConfirmationResult) {
+                toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
+                setOtpSent(false); // Reset state to allow resend
+                recaptchaVerifierRef.current?.clear(); // Cleanup verifier ref
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+                throw new Error("Confirmation session expired or invalid.");
              }
-        } finally {
-            setLoading(false);
+             console.log("Attempting to confirm signup OTP:", values.otp);
+             const userCredential = await window.signUpConfirmationResult.confirm(values.otp);
+
+             if (userCredential.user) {
+                 console.log("Phone user confirmed/created:", userCredential.user.uid);
+
+                 const additionalUserInfo = getAdditionalUserInfo(userCredential);
+                 const isNewUser = additionalUserInfo?.isNewUser ?? true; // Assume new user if info is missing
+
+                 // Always update profile name, and create Firestore doc if new
+                 await updateProfile(userCredential.user, { displayName });
+                 if (isNewUser) {
+                     const userDocRef = doc(firestore, "users", userCredential.user.uid);
+                     await setDoc(userDocRef, {
+                         uid: userCredential.user.uid,
+                         name: displayName,
+                         phone: userCredential.user.phoneNumber,
+                         createdAt: new Date(),
+                         isProfileComplete: false // Flag to indicate profile needs completion
+                     }, { merge: true });
+                     toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
+                     router.push('/complete-profile'); // Redirect new users to complete profile
+                 } else {
+                    // Existing user logged in via phone
+                    // Check if Firestore doc exists, create if not (edge case)
+                     const userDocRef = doc(firestore, "users", userCredential.user.uid);
+                     const docSnap = await getDoc(userDocRef);
+                     if (!docSnap.exists()) {
+                          await setDoc(userDocRef, {
+                             uid: userCredential.user.uid,
+                             name: displayName,
+                             phone: userCredential.user.phoneNumber,
+                             createdAt: new Date(), // Or use existing auth creation time if available
+                             isProfileComplete: false // Assume incomplete if doc was missing
+                         }, { merge: true });
+                          toast({ title: 'Login Successful', description: 'Welcome back! Please complete your profile.' });
+                          router.push('/complete-profile');
+                     } else if (!docSnap.data()?.isProfileComplete) {
+                         toast({ title: 'Login Successful', description: 'Welcome back! Please complete your profile.' });
+                         router.push('/complete-profile');
+                     } else {
+                          toast({ title: 'Login Successful', description: 'Welcome back!' });
+                          router.push('/'); // Redirect existing, complete users to home
+                     }
+                 }
+
+                  // Cleanup on success
+                  window.signUpConfirmationResult = undefined;
+                  recaptchaVerifierRef.current?.clear();
+                  recaptchaVerifierRef.current = null;
+                  recaptchaWidgetIdRef.current = null;
+             } else {
+                throw new Error("User object not found after OTP confirmation.");
+             }
         }
-    } else {
-        console.error("Form submission error: values structure mismatch or invalid signup type.");
-         toast({ title: "Error", description: "An unexpected error occurred during signup.", variant: "destructive" });
+    } catch (error: any) {
+         console.error(`Phone sign up error (${otpSent ? 'Verify OTP' : 'Send OTP'}):`, error);
+         console.error('Error Code:', error.code);
+         console.error('Error Message:', error.message);
+
+         if (!otpSent && recaptchaVerifierRef.current) {
+            console.warn("Resetting reCAPTCHA due to Send OTP error during signup.");
+             try {
+                recaptchaVerifierRef.current.clear();
+            } catch (clearError) {
+                console.error("Error clearing reCAPTCHA:", clearError);
+            } finally {
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+            }
+         }
+
+         const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
+         let description = `Error: ${error.message || 'Unknown error.'}`;
+
+        if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed')) {
+            description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
+            setOtpSent(false);
+        } else if (error.code === 'auth/invalid-phone-number') {
+             description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
+             setOtpSent(false); // Allow re-entry
+             form.setValue('phone', ''); // Clear invalid number
+        } else if (error.code === 'auth/invalid-verification-code') {
+             description = 'Invalid OTP entered. Please try again.';
+             form.setValue('otp', '');
+        } else if (error.code === 'auth/code-expired') {
+             description = 'The verification code has expired. Please send a new one.';
+             setOtpSent(false);
+        } else if (error.code === 'auth/too-many-requests') {
+             description = 'Too many attempts. Please try again later.';
+             setOtpSent(false);
+        } else if (error.code?.includes('auth/network-request-failed')) {
+             description = 'Network error. Please check your connection and try again.';
+        } else if (error.code === 'auth/configuration-not-found') {
+            description = 'Firebase configuration error. Ensure Phone Auth is enabled.';
+            setOtpSent(false);
+        } else if (error.code === 'auth/missing-client-identifier' || error.message?.includes('missing client identifier')) {
+            description = 'reCAPTCHA configuration error. Check Firebase setup and domain whitelisting.';
+            setOtpSent(false);
+        }
+
+         toast({
+            title: title,
+            description: description,
+            variant: 'destructive',
+         });
+         if (error.message.includes('expired') || error.code === 'auth/session-expired') {
+             setOtpSent(false);
+         }
+    } finally {
         setLoading(false);
     }
   };
@@ -376,28 +361,12 @@ export default function SignUpPage() {
 
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader>
-          <CardTitle className="text-xl">Sign Up</CardTitle>
-          <CardDescription>Enter your information to create an account</CardDescription>
+          <CardTitle className="text-xl">Sign Up with Phone</CardTitle>
+          <CardDescription>Enter your details to create an account</CardDescription>
         </CardHeader>
         <CardContent>
-            <Tabs value={signUpType} onValueChange={(value) => {
-                const newType = value as SignUpType;
-                 console.log("Switching signup type to:", newType);
-                setSignUpType(newType);
-                setOtpSent(false); // Reset OTP state crucial for UX
-                form.reset(newType === 'email'
-                  ? { firstName: '', lastName: '', email: '', password: '', confirmPassword: '' }
-                  : { firstName: '', lastName: '', phone: '', otp: '' });
-              }} className="w-full mb-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="email">Email</TabsTrigger>
-                <TabsTrigger value="phone">Phone</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
           <Form {...form}>
-            {/* We use a key prop to force re-render form when signUpType changes, ensuring validation schema updates */}
-            <form key={signUpType} onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
+            <form onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
                <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -406,7 +375,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>First name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Max" {...field} disabled={loading || (signUpType === 'phone' && otpSent)}/>
+                            <Input placeholder="Max" {...field} disabled={loading || otpSent}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -419,7 +388,7 @@ export default function SignUpPage() {
                         <FormItem>
                           <FormLabel>Last name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Robinson" {...field} disabled={loading || (signUpType === 'phone' && otpSent)}/>
+                            <Input placeholder="Robinson" {...field} disabled={loading || otpSent}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -427,103 +396,50 @@ export default function SignUpPage() {
                     />
                   </div>
 
-               {signUpType === 'email' ? (
-                 <>
-                    {/* Email Specific Fields */}
-                    <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" placeholder="m@example.com" {...field} disabled={loading}/>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} disabled={loading}/>
-                        </FormControl>
-                        <FormDescription>
-                          Password must be at least 6 characters long.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} disabled={loading}/>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Processing...' : 'Create an account'}
-                  </Button>
-                 </>
-               ) : (
-                <>
-                    {/* Phone Specific Fields */}
-                    <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Phone Number</FormLabel>
-                        <FormControl>
-                            <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                    />
+                {/* Phone Specific Fields */}
+                <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                        <Input type="tel" placeholder="+919876543210" {...field} disabled={otpSent || loading} />
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                {otpSent && (
+                        <FormField
+                        control={form.control}
+                        name="otp"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Enter OTP</FormLabel>
+                            <FormControl>
+                                <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                        />
+                )}
+                <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Sign Up' : 'Send OTP')}
+                    </Button>
                     {otpSent && (
-                         <FormField
-                         control={form.control}
-                         name="otp"
-                         render={({ field }) => (
-                             <FormItem>
-                             <FormLabel>Enter OTP</FormLabel>
-                             <FormControl>
-                                 <Input type="number" placeholder="Enter 6-digit OTP" {...field} disabled={loading} autoFocus/>
-                             </FormControl>
-                             <FormMessage />
-                             </FormItem>
-                         )}
-                         />
+                    <Button variant="link" size="sm" onClick={() => {
+                        setOtpSent(false);
+                        form.reset({...form.getValues(), otp: ''}); // Reset OTP field
+                        window.signUpConfirmationResult = undefined; // Clear confirmation ref/state
+                        recaptchaVerifierRef.current?.clear(); // Clear verifier ref
+                        recaptchaVerifierRef.current = null;
+                        recaptchaWidgetIdRef.current = null;
+                    }} className="text-sm" type="button" disabled={loading}> {/* Added type="button" */}
+                        Change Number or Resend OTP
+                    </Button>
                     )}
-                    <Button type="submit" className="w-full" disabled={loading}>
-                       {loading ? 'Processing...' : (otpSent ? 'Verify OTP & Sign Up' : 'Send OTP')}
-                     </Button>
-                     {otpSent && (
-                        <Button variant="link" size="sm" onClick={() => {
-                            setOtpSent(false);
-                            form.reset({...form.getValues(), otp: ''}); // Reset OTP field
-                            window.signUpConfirmationResult = undefined; // Clear confirmation ref/state
-                            recaptchaVerifierRef.current?.clear(); // Clear verifier ref
-                            recaptchaVerifierRef.current = null;
-                            recaptchaWidgetIdRef.current = null;
-                        }} className="text-sm" type="button" disabled={loading}> {/* Added type="button" */}
-                            Change Number or Resend OTP
-                        </Button>
-                     )}
-                </>
-               )}
             </form>
           </Form>
           <div className="mt-4 text-center text-sm">

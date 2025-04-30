@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, UserCircle, LogOut, Settings, Heart, ListOrdered } from 'lucide-react'; // Added missing icons
+import { Search, UserCircle, LogOut, Settings, Heart, ListOrdered } from 'lucide-react'; // Keep icons if needed for future dropdown
 import LanguageSwitcher from '@/components/language-switcher';
 import LocationSelector from '@/components/location-selector';
 import BharatNeedLogo from '@/components/bharat-need-logo';
@@ -12,22 +12,25 @@ import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
 import { auth } from '@/lib/firebase/clientApp'; // Import auth instance (can be null)
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+// DropdownMenu imports removed as dropdown is no longer the primary method
+// import {
+//   DropdownMenu,
+//   DropdownMenuContent,
+//   DropdownMenuItem,
+//   DropdownMenuLabel,
+//   DropdownMenuSeparator,
+//   DropdownMenuTrigger,
+// } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Skeleton } from '../ui/skeleton'; // Import Skeleton for loading state
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 
 export default function Header() {
   // IMPORTANT: Check if auth is initialized before using the hook
-  const [user, loading, error] = auth ? useAuthState(auth) : [null, true, null]; // Default to loading if auth is null
+  const [user, loading, error] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")]; // Default to loading if auth is null or undefined
   const { toast } = useToast();
+  const router = useRouter(); // Initialize router
 
   const handleLogout = async () => {
      if (!auth) {
@@ -37,7 +40,7 @@ export default function Header() {
     try {
       await signOut(auth);
       toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
-      // router.push('/'); // Optionally redirect after logout
+       router.push('/'); // Redirect to home after logout
     } catch (error: any) {
       console.error("Logout failed:", error);
       toast({ title: 'Logout Failed', description: error.message, variant: 'destructive' });
@@ -78,58 +81,21 @@ export default function Header() {
              // Show skeleton loaders while auth state is loading
              <Skeleton className="h-9 w-9 rounded-full" />
           ) : user ? (
-             // User is logged in - Show dropdown menu
-             <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                        <Avatar className="h-9 w-9">
-                         {/* Use user's photoURL or fallback */}
-                        <AvatarImage src={user.photoURL || `https://avatar.vercel.sh/${user.uid}.png`} alt={user.displayName || user.email || 'User'} />
-                        <AvatarFallback>{user.displayName?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
-                        </Avatar>
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">{user.displayName || 'User'}</p>
-                        <p className="text-xs leading-none text-muted-foreground">
-                         {user.email || user.phoneNumber || 'No contact info'}
-                        </p>
-                    </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                       <Link href="/profile">
-                            <UserCircle className="mr-2 h-4 w-4" />
-                            Profile
-                       </Link>
-                    </DropdownMenuItem>
-                     <DropdownMenuItem asChild>
-                       <Link href="/my-ads">
-                            <ListOrdered className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
-                            My Ads
-                       </Link>
-                    </DropdownMenuItem>
-                     <DropdownMenuItem asChild>
-                        <Link href="/favorites">
-                            <Heart className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
-                            Favorites
-                       </Link>
-                    </DropdownMenuItem>
-                     <DropdownMenuItem asChild>
-                         <Link href="/settings">
-                             <Settings className="mr-2 h-4 w-4" /> {/* Corrected Icon */}
-                             Settings
-                         </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout}>
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Logout
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+             // User is logged in - Show simplified view: Avatar + Logout Button (or maybe just Logout)
+             <>
+                {/* Optionally show Avatar linking to profile */}
+                 <Button variant="ghost" className="relative h-9 w-9 rounded-full" asChild>
+                    <Link href="/profile">
+                         <Avatar className="h-9 w-9">
+                             <AvatarImage src={user.photoURL || `https://avatar.vercel.sh/${user.uid}.png`} alt={user.displayName || 'User'} />
+                             <AvatarFallback>{user.displayName?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
+                         </Avatar>
+                    </Link>
+                 </Button>
+                <Button size="sm" variant="outline" onClick={handleLogout}>
+                    <LogOut className="mr-1 h-4 w-4" /> Logout
+                </Button>
+             </>
           ) : (
             // User is logged out - Show single Login / Sign Up button
             <Button size="sm" asChild>
