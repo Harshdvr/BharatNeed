@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react'; // Import useState, useEffect
@@ -11,10 +10,14 @@ import { Separator } from "@/components/ui/separator";
 import { IndianRupee, MapPin, MessageSquare, Phone, Share2, Tag, User, Heart } from "lucide-react"; // Added Heart
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from 'next/navigation'; // Using App Router hook
+import { usePathname, useRouter } from 'next/navigation'; // Using App Router hook, added useRouter
 import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useAuthState } from 'react-firebase-hooks/auth'; // Import auth hook
+import { auth, firestore } from '@/lib/firebase/clientApp'; // Import Firebase instances
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'; // Import Firestore functions
+import { formatDistanceToNow } from 'date-fns'; // For relative time
 
-// Define posting type structure
+// Define posting type structure - adjust based on your actual data model
 interface Posting {
     id: string;
     type: 'Need' | 'Offer';
@@ -25,35 +28,96 @@ interface Posting {
     budget: string;
     description: string;
     image: string | null;
-    sellerName: string;
-    sellerSince: string;
-    phone: string;
-    verified: boolean;
-    isFavorite: boolean; // Added isFavorite
+    createdAt: any; // Firestore Timestamp or Date
+    sellerName: string; // Name of the poster (fetched separately or stored with post)
+    sellerId: string; // ID of the poster
+    sellerSince?: string; // Date poster joined (fetched separately)
+    phone?: string | null; // Poster's phone (optional, fetched separately)
+    verified?: boolean; // Poster's verification status (fetched separately)
+    isFavorite?: boolean; // Whether the current user favorited this post
 }
 
-
-// Placeholder data fetching simulation - In a real app, fetch this based on the ID
-const getPostingDetails = async (id: string): Promise<Posting | null> => {
+// Fetch posting details and related user data
+const getPostingDetails = async (id: string, db: typeof firestore, currentUserId: string | null): Promise<Posting | null> => {
+    if (!db) return null;
     console.log(`Fetching details for ID: ${id}`);
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const postings: Posting[] = [
-        { id: '1', type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP. Contact for details. Experienced plumber preferred.', image: 'https://picsum.photos/seed/plumber/600/400', sellerName: 'Amit Patel', sellerSince: 'Member since 2023', phone: '+91 98XXXXXX01', verified: true, isFavorite: false },
-        { id: '2', type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes. Freshly prepared. Bulk orders accepted.', image: 'https://picsum.photos/seed/pickles/600/400', sellerName: 'Sunita Rao', sellerSince: 'Member since 2022', phone: '+91 99XXXXXX02', verified: false, isFavorite: true },
-        { id: '3', type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week. Food and accommodation provided. Call for wage details.', image: 'https://picsum.photos/seed/harvest/600/400', sellerName: 'Rajesh Singh', sellerSince: 'Member since 2024', phone: '+91 91XXXXXX03', verified: true, isFavorite: false },
-        { id: '4', type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10. Focus on concept clarity and practice. Weekend batches available.', image: 'https://picsum.photos/seed/tuition/600/400', sellerName: 'Deepa Khanna', sellerSince: 'Member since 2021', phone: '+91 95XXXXXX04', verified: true, isFavorite: false },
-        { id: '5', type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week. Must know Canva/Figma. Send portfolio link.', image: 'https://picsum.photos/seed/designer/600/400', sellerName: 'Creative Solutions', sellerSince: 'Member since 2023', phone: '+91 92XXXXXX05', verified: false, isFavorite: false },
-    ];
-    const found = postings.find(p => p.id === id);
-    // Simulate not found scenario
-    // if (id === 'notfound') return null;
-    return found || null;
+    try {
+        const postRef = doc(db, 'postings', id); // Adjust collection name
+        const postSnap = await getDoc(postRef);
+
+        if (postSnap.exists()) {
+            const postData = postSnap.data();
+            let sellerName = 'Unknown User';
+            let sellerSince = 'N/A';
+            let sellerPhone = null;
+            let sellerVerified = false;
+
+            // Fetch related user data if userId exists
+            if (postData.userId) {
+                try {
+                    const userRef = doc(db, 'users', postData.userId);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        sellerName = userData.name || 'Unnamed User';
+                        sellerSince = userData.createdAt ? formatDistanceToNow(userData.createdAt.toDate(), { addSuffix: true }) : 'N/A';
+                        sellerPhone = userData.phone || null; // Check privacy settings if needed
+                        sellerVerified = userSnap.data()?.isVerified || false; // Assuming 'isVerified' field
+                    }
+                } catch (userError) {
+                    console.error("Error fetching user data:", userError);
+                }
+            }
+
+            // Check if current user favorited this post
+            let isFavorite = false;
+            if (currentUserId) {
+                try {
+                     const currentUserRef = doc(db, 'users', currentUserId);
+                     const currentUserSnap = await getDoc(currentUserRef);
+                     if (currentUserSnap.exists()) {
+                        const currentUserData = currentUserSnap.data();
+                        isFavorite = currentUserData.favorites?.includes(id) || false;
+                     }
+                } catch(favError) {
+                     console.error("Error checking favorite status:", favError);
+                }
+            }
+
+            return {
+                id: postSnap.id,
+                type: postData.type || 'Need',
+                title: postData.title || 'Untitled Post',
+                category: postData.category || 'Uncategorized',
+                location: postData.location || 'N/A',
+                urgency: postData.urgency || 'N/A',
+                budget: postData.budget || 'N/A',
+                description: postData.description || 'No description',
+                image: postData.image || null,
+                createdAt: postData.createdAt || null,
+                sellerId: postData.userId || 'unknown',
+                sellerName: sellerName,
+                sellerSince: sellerSince,
+                phone: sellerPhone,
+                verified: sellerVerified,
+                isFavorite: isFavorite,
+            } as Posting;
+        } else {
+            console.log("No such posting document!");
+            return null;
+        }
+    } catch (error) {
+        console.error("Error getting posting document:", error);
+        return null;
+    }
 };
+
 
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
     const pathname = usePathname();
     const { toast } = useToast();
+    const router = useRouter();
+    const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
     const [posting, setPosting] = useState<Posting | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -64,8 +128,31 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             setIsLoading(true);
             setError(null);
             setShowingPhone(false); // Reset phone view on new load
+
+            if (!firestore) {
+                setError('Database connection failed.');
+                setIsLoading(false);
+                return;
+            }
+
+            // Wait until auth state is resolved before fetching
+            if (authLoading) {
+                 // Still loading auth state, wait...
+                 return;
+            }
+
+             // Handle auth errors during fetch setup
+            if (authError) {
+                console.error("Firebase Auth Hook Error:", authError);
+                setError('Authentication error.');
+                setIsLoading(false);
+                return;
+            }
+
+
             try {
-                const data = await getPostingDetails(params.id);
+                // Pass current user's UID (or null if not logged in)
+                const data = await getPostingDetails(params.id, firestore, user?.uid || null);
                 if (data) {
                     setPosting(data);
                 } else {
@@ -80,11 +167,11 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         };
 
         fetchDetails();
-    }, [params.id]); // Refetch when ID changes
+    }, [params.id, user, authLoading, authError]); // Refetch when ID, user, or loading state changes
 
-    // Placeholder share function
+
     const handleShare = () => {
-         if (!posting) return;
+         if (!posting || typeof window === 'undefined') return;
         if (navigator.share) {
             navigator.share({
                 title: posting.title,
@@ -94,38 +181,82 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             .then(() => console.log('Successful share'))
             .catch((error) => console.log('Error sharing', error));
         } else {
-            // Fallback for browsers that don't support navigator.share
-            navigator.clipboard.writeText(window.location.href);
-            toast({ description: 'Link copied to clipboard!' }); // Use toast notification
+             try {
+                navigator.clipboard.writeText(window.location.href);
+                toast({ description: 'Link copied to clipboard!' });
+             } catch (err) {
+                 toast({ description: 'Failed to copy link.', variant: 'destructive'});
+             }
         }
     };
 
-    // Handle showing phone number (add confirmation/logic if needed)
     const handleShowPhone = () => {
-        setShowingPhone(true);
-        // Optionally track this event
+        if (user?.uid === posting?.sellerId) {
+            toast({ description: "This is your contact number.", variant: "default" });
+             setShowingPhone(true);
+             return;
+        }
+        if (posting?.phone) {
+            setShowingPhone(true);
+            // TODO: Optionally track this event or require confirmation
+            console.log("Showing phone number");
+        } else {
+            toast({ description: "Phone number not available for this user.", variant: "default" });
+        }
     }
 
-     // Handle chat button click
      const handleChatClick = () => {
-        // TODO: Implement navigation to chat page with this user/posting context
-        toast({ description: "Chat functionality not implemented yet." });
+        if (!user) {
+            toast({ description: "Please log in to chat.", variant: "default"});
+            router.push('/login'); // Redirect to login if not authenticated
+            return;
+        }
+        if (!posting || user.uid === posting.sellerId) return; // Don't chat with self
+
+        // Navigate to chat page with context
+        router.push(`/chat?userId=${posting.sellerId}&postId=${posting.id}`);
+        // toast({ description: "Chat functionality under development." });
      }
 
-      // TODO: Implement actual favoriting logic (likely Server Action)
-     const handleToggleFavorite = () => {
-        if (!posting) return;
-        // Requires user to be logged in - Add auth check later
-        setPosting(prev => prev ? { ...prev, isFavorite: !prev.isFavorite } : null);
-        console.log(`Toggled favorite for post ${posting.id}. New state: ${!posting.isFavorite}`);
+     const handleToggleFavorite = async () => {
+        if (!user) {
+            toast({ title: "Login Required", description: "Please log in to manage favorites.", variant: "default" });
+            router.push('/login');
+            return;
+        }
+        if (!posting || !firestore) {
+             toast({ title: "Error", description: "Cannot update favorites.", variant: "destructive"});
+             return;
+        }
+
+        const isCurrentlyFavorite = posting.isFavorite;
+
+        // Optimistically update UI
+        setPosting(prev => prev ? { ...prev, isFavorite: !isCurrentlyFavorite } : null);
+        console.log(`Toggled favorite for post ${posting.id}. New state: ${!isCurrentlyFavorite}`);
         toast({
-            description: !posting.isFavorite ? "Added to favorites!" : "Removed from favorites.",
+            description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
         });
-        // Add Server Action call here to update Firestore
+
+        // Update Firestore
+        try {
+             const userDocRef = doc(firestore, 'users', user.uid);
+             if (isCurrentlyFavorite) {
+                await updateDoc(userDocRef, { favorites: arrayRemove(posting.id) });
+             } else {
+                await updateDoc(userDocRef, { favorites: arrayUnion(posting.id) }, { merge: true });
+             }
+            console.log("Firestore favorite status updated successfully.");
+        } catch (error) {
+             console.error("Error updating favorite status in Firestore:", error);
+             toast({ title: "Error", description: "Failed to update favorites.", variant: "destructive" });
+             // Revert optimistic update on failure
+             setPosting(prev => prev ? { ...prev, isFavorite: isCurrentlyFavorite } : null);
+        }
      };
 
 
-    if (isLoading) {
+    if (isLoading || authLoading) {
         return (
             <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -134,14 +265,27 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
     }
 
     if (error) {
-        return <div className="text-center py-10 text-destructive">{error}</div>;
+        return (
+            <div className="text-center py-10">
+                 <p className="text-destructive">{error}</p>
+                 <Button onClick={() => window.location.reload()} className="mt-4">Retry</Button>
+            </div>
+        );
     }
 
+
     if (!posting) {
-         // This case should ideally be covered by the error state after fetch,
-         // but kept as a fallback.
-        return <div className="text-center py-10">Posting not found.</div>;
+        return (
+            <div className="text-center py-10">
+                <p>Posting not found.</p>
+                 <Button asChild className="mt-4">
+                    <Link href="/">Go Home</Link>
+                </Button>
+            </div>
+        );
     }
+
+    const postedDateFormatted = posting.createdAt?.toDate ? formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true }) : 'recently';
 
 
     return (
@@ -149,28 +293,30 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
-                    {/* Image Carousel Placeholder */}
+                    {/* Image */}
                     <Card className="overflow-hidden">
                          <div className="relative aspect-video bg-muted">
                             <Image
-                                src={posting.image || 'https://picsum.photos/600/400'}
+                                src={posting.image || 'https://picsum.photos/600/400?random=' + posting.id} // Add random query for picsum
                                 alt={posting.title}
                                 fill
                                 style={{ objectFit: 'cover' }}
                                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px"
                                 priority // Prioritize loading the main image
                             />
-                             {/* Favorite Button Overlay on Image */}
-                            {/* TODO: Add check if user is logged in before showing */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
-                                onClick={handleToggleFavorite}
-                                aria-label={posting.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                                >
-                                <Heart className={`h-5 w-5 transition-colors ${posting.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
-                            </Button>
+                            {/* Favorite Button Overlay on Image */}
+                            {user && ( // Only show if user is logged in
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                                    onClick={handleToggleFavorite}
+                                    aria-label={posting.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                                    disabled={user.uid === posting.sellerId} // Disable if it's user's own post
+                                    >
+                                    <Heart className={`h-5 w-5 transition-colors ${posting.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                                </Button>
+                            )}
                          </div>
                     </Card>
 
@@ -194,18 +340,17 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 <span className="text-2xl font-bold text-primary flex items-center">
                                     <IndianRupee className="inline h-6 w-6 mr-1" /> {posting.budget}
                                 </span>
-                                <Button variant="ghost" size="icon" onClick={handleShare}>
+                                <Button variant="ghost" size="icon" onClick={handleShare} aria-label="Share Posting">
                                      <Share2 className="h-5 w-5" />
-                                     <span className="sr-only">Share</span>
                                 </Button>
                            </div>
                             <CardTitle className="text-xl pt-1">{posting.title}</CardTitle>
                             <div className="flex justify-between items-center text-xs text-muted-foreground pt-2">
                                 <div className="flex items-center gap-1">
                                     <MapPin className="h-3 w-3"/>
-                                    <span>{posting.location}</span>
+                                    <span className='truncate'>{posting.location}</span>
                                 </div>
-                                <span>Posted: {/* TODO: Add actual date */} Today</span>
+                                <span>Posted {postedDateFormatted}</span>
                             </div>
                         </CardHeader>
                         <CardFooter>
@@ -225,28 +370,32 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                         </CardHeader>
                         <CardContent className="flex items-center gap-4">
                             <Avatar className="h-12 w-12">
-                                <AvatarImage src={`https://picsum.photos/seed/${posting.sellerName}/100/100`} alt={posting.sellerName} />
+                                {/* TODO: Fetch actual avatar or use placeholder */}
+                                <AvatarImage src={`https://avatar.vercel.sh/${posting.sellerId}.png`} alt={posting.sellerName} />
                                 <AvatarFallback>{posting.sellerName?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                             </Avatar>
                             <div>
+                                {/* TODO: Link to seller's profile page if available */}
                                 <p className="font-semibold">{posting.sellerName}</p>
-                                <p className="text-xs text-muted-foreground">{posting.sellerSince}</p>
+                                <p className="text-xs text-muted-foreground">Member {posting.sellerSince}</p>
                                 {posting.verified && <Badge variant="secondary" className="mt-1 text-xs">Verified User</Badge>}
                             </div>
                         </CardContent>
                          <Separator />
                          <CardFooter className="flex flex-col gap-2 pt-4">
-                           <Button className="w-full" size="lg" onClick={handleChatClick}>
-                                <MessageSquare className="mr-2 h-5 w-5" /> Chat with Poster
+                           <Button className="w-full" size="lg" onClick={handleChatClick} disabled={user?.uid === posting.sellerId}>
+                                <MessageSquare className="mr-2 h-5 w-5" />
+                                {user?.uid === posting.sellerId ? "This is your post" : "Chat with Poster"}
                            </Button>
                            {showingPhone ? (
-                                <div className="flex items-center justify-center w-full p-2 border rounded bg-muted">
+                                <a href={`tel:${posting.phone}`} className="flex items-center justify-center w-full p-2 border rounded bg-muted hover:bg-muted/80">
                                     <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
                                     <span className="font-medium text-foreground">{posting.phone}</span>
-                                </div>
+                                </a>
                            ) : (
-                                <Button variant="outline" className="w-full" size="lg" onClick={handleShowPhone}>
-                                    <Phone className="mr-2 h-5 w-5" /> Show Phone Number
+                                <Button variant="outline" className="w-full" size="lg" onClick={handleShowPhone} disabled={!posting.phone || user?.uid === posting.sellerId}>
+                                    <Phone className="mr-2 h-5 w-5" />
+                                    {posting.phone ? 'Show Phone Number' : 'Phone not available'}
                                 </Button>
                            )}
                          </CardFooter>
@@ -261,7 +410,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                            {/* TODO: Integrate actual map component */}
                            <div className="aspect-video bg-muted rounded-md flex items-center justify-center text-muted-foreground">
                                 <MapPin className="h-8 w-8 mr-2"/>
-                                <span>Map Placeholder ({posting.location})</span>
+                                <span className='text-center'>Map Placeholder for<br/>{posting.location}</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -269,11 +418,12 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             </div>
 
              {/* Related Postings Placeholder */}
-            {/* TODO: Fetch and display related postings with loading state */}
+            {/* TODO: Fetch and display related postings */}
             <div className="mt-12">
                 <h2 className="text-2xl font-semibold mb-4">Related Postings</h2>
+                 {/* TODO: Add LoadingSpinner while fetching related posts */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Example related item - Replace with actual data/component */}
+                    {/* Replace with actual related items */}
                     <Card className="text-center p-4 border-dashed">
                         <p className="text-muted-foreground">Related Item Placeholder</p>
                     </Card>

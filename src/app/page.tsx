@@ -1,27 +1,30 @@
+'use client'; // Required for useState, useEffect and useAuthState
 
-'use client'; // Required for useState and onClick handlers
-
-import { useState } from 'react'; // Import useState
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
-import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react'; // Added Heart
+import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react';
 import Link from "next/link";
 import Image from "next/image";
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
+import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs } from 'firebase/firestore'; // Import Firestore functions
 
-// Placeholder data for postings - Added image URLs
-// TODO: Fetch this data asynchronously and add a loading state
-const postings = [
-  { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200', isFavorite: false }, // Added isFavorite
-  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200', isFavorite: true }, // Added isFavorite
-  { id: 3, type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200', isFavorite: false }, // Added isFavorite
-  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200', isFavorite: false }, // Added isFavorite
-  { id: 5, type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200', isFavorite: false }, // Added isFavorite
+// TODO: Remove placeholder postings and fetch actual data from Firestore
+const initialPostings: any[] = [
+ // Example Structure (replace with fetched data)
+ // { id: '1', type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200', isFavorite: false, userId: 'user1' },
+ // { id: '2', type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200', isFavorite: false, userId: 'user2' },
+ // { id: '3', type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200', isFavorite: false, userId: 'user3' },
+ // { id: '4', type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200', isFavorite: false, userId: 'user4' },
+ // { id: '5', type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200', isFavorite: false, userId: 'user1' },
 ];
 
-// Placeholder for category icons
+
+// Placeholder for category icons - Assuming these remain static
 const categoryIcons: { [key: string]: React.ElementType } = {
   'Services': Tag,
   'Buy/Sell': IndianRupee,
@@ -37,30 +40,118 @@ const getCategoryIcon = (category: string): React.ElementType => {
 
 
 export default function Home() {
-  // TODO: Add state for loading data, e.g., const [isLoading, setIsLoading] = useState(true);
-  // TODO: Fetch postings data in useEffect or similar
-  const [currentPostings, setCurrentPostings] = useState(postings); // State for postings data
+  // IMPORTANT: Check if auth is initialized before using the hook
+  // Default to loading if auth is null or undefined during initialization
+  const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
+  const [currentPostings, setCurrentPostings] = useState<any[]>([]); // State for postings data
+  const [isLoading, setIsLoading] = useState(true); // State for loading data
   const { toast } = useToast();
 
-  // TODO: Implement actual favoriting logic (likely Server Action)
-  const handleToggleFavorite = (postId: number) => {
-    // Requires user to be logged in - Add auth check later
+  // Fetch postings data from Firestore in useEffect
+  useEffect(() => {
+    const fetchPostings = async () => {
+        setIsLoading(true);
+        if (!firestore) {
+            console.error("Firestore not initialized");
+            toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
+            setIsLoading(false);
+            return;
+        }
+        try {
+            // const postingsRef = collection(firestore, 'postings'); // Adjust collection name
+            // const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20)); // Example query
+            // const querySnapshot = await getDocs(q);
+            // const fetchedPostings = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // TODO: Fetch user's favorites to set the initial `isFavorite` state
+            // This might involve another query or checking against a user's favorites list
+            // For now, setting isFavorite to false as default placeholder behavior
+
+            // setCurrentPostings(fetchedPostings.map(p => ({...p, isFavorite: false})));
+            setCurrentPostings(initialPostings.map(p => ({...p, isFavorite: false}))); // Replace with actual fetched data
+            console.log("Fetched postings (simulated)");
+        } catch (error) {
+            console.error("Error fetching postings:", error);
+            toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    fetchPostings();
+  }, [toast]); // Add dependencies if needed (e.g., filter criteria)
+
+
+  // Handle favoriting logic (Server Action updating Firestore)
+  const handleToggleFavorite = async (postId: string) => {
+    if (!user) {
+        toast({ title: "Login Required", description: "Please log in to add favorites.", variant: "destructive" });
+        return;
+    }
+    if (!firestore) {
+         toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
+         return;
+    }
+
+    const postingIndex = currentPostings.findIndex(p => p.id === postId);
+    if (postingIndex === -1) return;
+
+    const posting = currentPostings[postingIndex];
+    const isCurrentlyFavorite = posting.isFavorite;
+
+    // Optimistically update UI
     setCurrentPostings(prevPostings =>
-      prevPostings.map(post =>
-        post.id === postId ? { ...post, isFavorite: !post.isFavorite } : post
+      prevPostings.map(p =>
+        p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
       )
     );
-    const isNowFavorite = currentPostings.find(p => p.id === postId)?.isFavorite;
-    console.log(`Toggled favorite for post ${postId}. New state: ${!isNowFavorite}`);
+
+    console.log(`Toggling favorite for post ${postId}. New state: ${!isCurrentlyFavorite}`);
     toast({
-      description: !isNowFavorite ? "Added to favorites!" : "Removed from favorites.",
+      description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
     });
-    // Add Server Action call here to update Firestore
+
+    try {
+        // Update user's favorites array in Firestore
+        const userDocRef = doc(firestore, 'users', user.uid);
+        if (isCurrentlyFavorite) {
+            await updateDoc(userDocRef, { favorites: arrayRemove(postId) });
+        } else {
+            // Use merge: true to create the favorites array if it doesn't exist
+            await updateDoc(userDocRef, { favorites: arrayUnion(postId) }, { merge: true });
+        }
+        console.log("Firestore favorite status updated");
+    } catch (error) {
+        console.error("Error updating favorites:", error);
+        toast({ title: "Error", description: "Could not update favorites.", variant: "destructive" });
+        // Revert optimistic UI update on error
+        setCurrentPostings(prevPostings =>
+          prevPostings.map(p =>
+            p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p
+          )
+        );
+    }
   };
 
+  // Handle auth error display
+  useEffect(() => {
+    if (authError) {
+      console.error("Firebase Auth Hook Error:", authError);
+      toast({
+        title: "Authentication Error",
+        description: authError.message || "Could not verify user.",
+        variant: "destructive",
+      });
+    }
+  }, [authError, toast]);
 
-  // TODO: Render LoadingSpinner while isLoading is true
-  // if (isLoading) return <LoadingSpinner />;
+  if (isLoading || authLoading) {
+       return (
+            <div className="flex justify-center items-center min-h-[60vh]">
+                <LoadingSpinner />
+            </div>
+       );
+  }
+
 
   return (
     <div className="relative min-h-full">
@@ -71,7 +162,6 @@ export default function Home() {
         <p className="mt-2 text-lg text-muted-foreground">
           Connecting needs and offers across India. Post what you need, offer what you have.
         </p>
-        {/* Floating Action Button - Moved here */}
          <Button
             variant="default"
             size="lg"
@@ -86,11 +176,11 @@ export default function Home() {
       </div>
 
       {/* Category Filters Placeholder */}
+      {/* TODO: Implement filtering logic */}
       <div className="mb-6 flex flex-wrap justify-center gap-2">
         {Object.keys(categoryIcons).map((category) => {
           const Icon = getCategoryIcon(category);
           return (
-            // TODO: Add onClick handler to filter postings, potentially showing a loading state
             <Button key={category} variant="outline" size="sm" className="gap-1">
               <Icon />
               {category}
@@ -101,66 +191,80 @@ export default function Home() {
       </div>
 
       {/* Postings Grid */}
-      {/* TODO: Replace with loading state or actual data */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
-        {currentPostings.map((post) => {
-          const CategoryIcon = getCategoryIcon(post.category);
-          return (
-          <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card"> {/* Added group/card */}
-             <div className="relative w-full aspect-[3/2]"> {/* Wrap image and favorite button */}
-                 <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
-                    <Image
-                        src={post.image || 'https://picsum.photos/300/200'} // Use post image or default
-                        alt={post.title}
-                        fill // Use fill to cover the container
-                        style={{ objectFit: 'cover' }} // Cover the area
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw" // Responsive sizes
-                    />
-                 </Link>
-                {/* Favorite Button Overlay */}
-                {/* TODO: Add check if user is logged in before showing */}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
-                    onClick={() => handleToggleFavorite(post.id)}
-                    aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                    >
-                    <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
-                 </Button>
-            </div>
-            <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4"> {/* Moved padding here */}
-              <CardHeader className="p-0 pb-3"> {/* Removed padding */}
-                <div className="flex justify-between items-start gap-2">
-                   <CardTitle className="text-lg leading-tight line-clamp-2">{post.title}</CardTitle>
-                   <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
-                     {post.type}
-                   </Badge>
+      {currentPostings.length > 0 ? (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
+            {currentPostings.map((post) => {
+              const CategoryIcon = getCategoryIcon(post.category);
+              return (
+              <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card">
+                 <div className="relative w-full aspect-[3/2]">
+                     <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
+                        <Image
+                            src={post.image || 'https://picsum.photos/300/200'}
+                            alt={post.title || 'Posting image'}
+                            fill
+                            style={{ objectFit: 'cover' }}
+                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                        />
+                     </Link>
+                    {/* Favorite Button Overlay */}
+                    {user && ( // Only show if user is logged in
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                            onClick={() => handleToggleFavorite(post.id)}
+                            aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                            >
+                            <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                         </Button>
+                    )}
                 </div>
-                <CardDescription className="flex items-center gap-1 text-xs pt-1">
-                   <CategoryIcon /> {post.category}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3"> {/* Removed padding */}
-                <p className="line-clamp-3">{post.description}</p>
-              </CardContent>
-              <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-0 mt-auto"> {/* Removed padding */}
-                 <div className="flex items-center gap-1.5 w-full pt-3 px-4"> {/* Added padding back */}
-                    <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location}</span>
-                 </div>
-                 <div className="flex items-center gap-1.5 w-full px-4"> {/* Added padding back */}
-                    <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency}
-                 </div>
-                 <div className="flex items-center gap-1.5 w-full font-semibold pb-3 px-4"> {/* Added padding back */}
-                    <IndianRupee className="h-3.5 w-3.5" /> {post.budget}
-                 </div>
-              </CardFooter>
-            </Link>
-          </Card>
-          );
-        })}
-      </div>
-
+                <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4">
+                  <CardHeader className="p-0 pb-3">
+                    <div className="flex justify-between items-start gap-2">
+                       <CardTitle className="text-lg leading-tight line-clamp-2">{post.title || 'Untitled Post'}</CardTitle>
+                       <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
+                         {post.type}
+                       </Badge>
+                    </div>
+                    <CardDescription className="flex items-center gap-1 text-xs pt-1">
+                       <CategoryIcon /> {post.category || 'Uncategorized'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3">
+                    <p className="line-clamp-3">{post.description || 'No description'}</p>
+                  </CardContent>
+                  <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-0 mt-auto">
+                     <div className="flex items-center gap-1.5 w-full pt-3 px-4">
+                        <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location || 'N/A'}</span>
+                     </div>
+                     <div className="flex items-center gap-1.5 w-full px-4">
+                        <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency || 'N/A'}
+                     </div>
+                     <div className="flex items-center gap-1.5 w-full font-semibold pb-3 px-4">
+                        <IndianRupee className="h-3.5 w-3.5" /> {post.budget || 'N/A'}
+                     </div>
+                  </CardFooter>
+                </Link>
+              </Card>
+              );
+            })}
+          </div>
+      ) : (
+         <div className="text-center py-10">
+            {isLoading ? ( // Show spinner while postings are loading if no postings yet
+                <LoadingSpinner />
+            ) : (
+                <>
+                    <p className="text-lg text-muted-foreground">No postings found. Be the first to post!</p>
+                    <Button asChild className="mt-4">
+                        <Link href="/post-need">Post Need/Offer</Link>
+                    </Button>
+                 </>
+            )}
+        </div>
+      )}
     </div>
   );
 }

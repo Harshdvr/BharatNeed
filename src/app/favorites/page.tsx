@@ -1,36 +1,89 @@
-
 'use client';
 
-import { useState } from 'react'; // Import useState
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from 'react'; // Import useState
 import LoadingSpinner from "@/components/loading-spinner"; // Keep LoadingSpinner import
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { IndianRupee, MapPin, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth, firestore } from '@/lib/firebase/clientApp';
+import { Button } from '@/components/ui/button';
+// TODO: Import necessary Firestore functions (e.g., doc, updateDoc, arrayRemove, getDoc)
 
-// Placeholder data for favorited postings - In a real app, fetch this for the logged-in user
-const initialFavoritePostings = [
-  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', budget: '₹150/kg', description: 'Delicious mango and lemon pickles...', image: 'https://picsum.photos/seed/pickles/300/200', dateFavorited: '3 days ago' },
-  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', budget: '₹2000/month', description: 'Experienced teacher offering...', image: 'https://picsum.photos/seed/tuition/300/200', dateFavorited: '1 week ago' },
+// TODO: Remove initialFavoritePostings and fetch actual data for the logged-in user
+const initialFavoritePostings: any[] = [
+  // Example Structure (replace with fetched data)
+  // { id: '2', type: 'Offer', title: 'Fetched Item 1', category: '...', location: '...', budget: '...', description: '...', image: '...', dateFavorited: '...' },
 ];
 
 export default function FavoritesPage() {
-    // TODO: Add loading state for initial data fetch
-    const [favorites, setFavorites] = useState(initialFavoritePostings);
+    const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
+    const [favorites, setFavorites] = useState<any[]>([]);
+    const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
     const [loadingRemoveId, setLoadingRemoveId] = useState<string | number | null>(null); // State to track which item is being removed
     const { toast } = useToast();
 
-    // TODO: Implement remove from favorites action
+    useEffect(() => {
+      const fetchFavorites = async () => {
+          if (!user || !firestore) {
+             setIsLoadingInitialData(false);
+             return; // Exit if not logged in or firestore not ready
+          }
+          setIsLoadingInitialData(true);
+          try {
+              // TODO: Fetch user's favorite list (IDs) from their profile document
+              // const userDocRef = doc(firestore, 'users', user.uid);
+              // const userDocSnap = await getDoc(userDocRef);
+              // const favoriteIds = userDocSnap.exists() ? userDocSnap.data().favorites || [] : [];
+
+              // TODO: Fetch the actual posting details for each favorite ID
+              // This might involve multiple `getDoc` calls or a more complex query
+              // Example: const favoritePostingsPromises = favoriteIds.map(id => getDoc(doc(firestore, 'postings', id)));
+              // const favoritePostingsSnaps = await Promise.all(favoritePostingsPromises);
+              // const fetchedFavorites = favoritePostingsSnaps.map(snap => snap.exists() ? { id: snap.id, ...snap.data() } : null).filter(Boolean);
+
+              setFavorites(initialFavoritePostings); // Replace with actual fetched data
+              console.log("Fetched favorite postings (simulated)");
+          } catch (error) {
+              console.error("Error fetching favorites:", error);
+              toast({ title: "Error", description: "Could not load your favorites.", variant: "destructive" });
+          } finally {
+              setIsLoadingInitialData(false);
+          }
+      };
+
+      if (!authLoading) {
+          fetchFavorites();
+      }
+
+      // Handle auth errors
+      if (authError) {
+        console.error("Firebase Auth Hook Error:", authError);
+        toast({
+          title: "Authentication Error",
+          description: authError.message || "Could not verify user.",
+          variant: "destructive",
+        });
+        setIsLoadingInitialData(false);
+      }
+
+  }, [user, authLoading, toast, authError]);
+
+
     const handleRemoveFavorite = async (id: string | number) => {
+         if (!user || !firestore) {
+             toast({ title: "Login Required", description: "Please log in to manage favorites.", variant: "destructive"});
+             return;
+         }
         setLoadingRemoveId(id); // Start loading for this specific item
         console.log(`Removing favorite ${id}`);
-        // Simulate server action call
-        await new Promise(resolve => setTimeout(resolve, 1000));
         try {
-            // In a real app, call server action to remove from DB
-            console.log(`Simulating remove favorite for ad ${id}`);
+            // Call server action or directly update Firestore to remove from DB
+             const userDocRef = doc(firestore, 'users', user.uid);
+             await updateDoc(userDocRef, { favorites: arrayRemove(id) }); // Firestore function
+            console.log(`Removed favorite ${id} from Firestore`);
             setFavorites(prev => prev.filter(ad => ad.id !== id));
             toast({ title: "Removed", description: "Posting removed from favorites." });
         } catch (error) {
@@ -41,10 +94,25 @@ export default function FavoritesPage() {
         }
     };
 
-    // TODO: Add loading indicator for initial data fetch
-    // if (isLoadingInitialData) {
-    //     return <LoadingSpinner />;
-    // }
+    if (isLoadingInitialData || authLoading) {
+        return (
+            <div className="flex justify-center items-center min-h-[60vh]">
+                <LoadingSpinner />
+            </div>
+        );
+    }
+
+     if (!user && !authLoading) {
+         return (
+            <div className="text-center py-10">
+                 <p className="text-lg text-muted-foreground mb-4">Please log in to view your favorites.</p>
+                 <Button asChild>
+                    <Link href="/login">Login / Sign Up</Link>
+                 </Button>
+            </div>
+         );
+     }
+
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -80,7 +148,8 @@ export default function FavoritesPage() {
                                     </CardDescription>
                                 </Link>
                                 <div className="flex justify-between items-center mt-3 pt-2 border-t">
-                                    <span className="text-xs text-muted-foreground">Favorited: {ad.dateFavorited}</span>
+                                    {/* TODO: Display actual favorited date if available */}
+                                    <span className="text-xs text-muted-foreground">Favorited {ad.dateFavorited || ''}</span>
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -98,10 +167,16 @@ export default function FavoritesPage() {
                 </div>
             ) : (
                 <div className="text-center py-10">
-                    <p className="text-lg text-muted-foreground">You haven't favorited any ads yet.</p>
-                    <Button asChild className="mt-4">
-                        <Link href="/">Browse Ads</Link>
-                    </Button>
+                    {isLoadingInitialData ? (
+                         <LoadingSpinner />
+                    ) : (
+                         <>
+                            <p className="text-lg text-muted-foreground">You haven't favorited any ads yet.</p>
+                            <Button asChild className="mt-4">
+                                <Link href="/">Browse Ads</Link>
+                            </Button>
+                         </>
+                    )}
                 </div>
             )}
         </div>

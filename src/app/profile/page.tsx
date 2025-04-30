@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react'; // Import hooks
@@ -7,10 +6,9 @@ import LoadingSpinner from "@/components/loading-spinner"; // Keep spinner impor
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+// Removed unused Input and Label imports
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
+// Removed unused Textarea import
 import { Edit, Mail, MapPin, Phone, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
@@ -18,6 +16,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
 import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
 import { format } from 'date-fns'; // For formatting date
+import { useRouter } from 'next/navigation'; // Import router
 
 // User profile data structure from Firestore
 interface UserProfile {
@@ -25,23 +24,25 @@ interface UserProfile {
     name: string;
     email: string | null;
     phone: string | null;
-    location: string | null;
+    location?: string | null; // Made optional as it might not be in Firestore yet
     createdAt: any; // Firestore Timestamp or Date
     memberSince?: string; // Add memberSince derived property
-    bio: string | null;
-    avatarUrl: string | null; // Assuming you store this
-    isVerified: boolean; // You might derive this or store it
+    bio?: string | null; // Made optional
+    avatarUrl?: string | null; // Assuming you store this, made optional
+    isVerified?: boolean; // You might derive this or store it, made optional
     totalAds?: number; // Optional, might calculate elsewhere
     activeAds?: number; // Optional, might calculate elsewhere
     isProfileComplete?: boolean;
-    age?: number | null;
+    age?: number | null; // Made optional
 }
 
 export default function ProfilePage() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
-    const [user, authLoading, authError] = useAuthState(auth); // Get user auth state
+    // Handle potential null auth state safely
+    const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
+    const router = useRouter(); // Initialize router
 
      useEffect(() => {
         const loadProfile = async () => {
@@ -50,6 +51,7 @@ export default function ProfilePage() {
                  console.error("Auth Error:", authError);
                  toast({ title: "Authentication Error", description: "Could not verify user.", variant: "destructive"});
                  setIsLoading(false);
+                 router.push('/login'); // Redirect on auth error
                  return;
             }
             if (!authLoading && user && firestore) {
@@ -59,38 +61,38 @@ export default function ProfilePage() {
                     const docSnap = await getDoc(userRef);
 
                     if (docSnap.exists()) {
-                        const data = docSnap.data() as Omit<UserProfile, 'isVerified'>; // Cast data, handle isVerified separately
+                        const data = docSnap.data() as Partial<UserProfile>; // Use Partial for flexibility
                          console.log("Firestore Document data:", data);
+
+                         // Check if the profile is complete
+                         if (!data.isProfileComplete) {
+                            toast({ title: "Profile Incomplete", description: "Please complete your profile information.", variant: "default" });
+                            router.push('/complete-profile');
+                            return; // Stop further execution
+                         }
+
                         setUserProfile({
-                            ...data,
                             uid: user.uid,
                             name: data.name || user.displayName || 'Unnamed User',
-                            email: data.email || user.email, // Prefer Firestore email, fallback to Auth email
-                            phone: data.phone || user.phoneNumber, // Prefer Firestore phone, fallback to Auth phone
-                            avatarUrl: data.avatarUrl || user.photoURL, // Prefer Firestore avatar, fallback to Auth avatar
-                            isVerified: user.emailVerified || !!user.phoneNumber, // Example verification logic
-                            // Calculate memberSince from createdAt
-                             memberSince: data.createdAt ? format(data.createdAt.toDate(), 'MMMM yyyy') : 'Unknown',
+                            email: data.email !== undefined ? data.email : user.email, // Prefer Firestore email if explicitly set (even if null)
+                            phone: data.phone !== undefined ? data.phone : user.phoneNumber, // Prefer Firestore phone if explicitly set
+                            location: data.location || null,
+                            createdAt: data.createdAt || null, // Handle potentially missing createdAt
+                            bio: data.bio || null,
+                            avatarUrl: data.avatarUrl || user.photoURL || null, // Prefer Firestore avatar
+                            isVerified: user.emailVerified || !!user.phoneNumber, // Example verification logic based on Auth
+                            memberSince: data.createdAt?.toDate ? format(data.createdAt.toDate(), 'MMMM yyyy') : 'Unknown', // Safely format date
+                            isProfileComplete: data.isProfileComplete || false,
+                            age: data.age || null,
                              // TODO: Add logic to fetch ad counts if needed
                              totalAds: 0, // Placeholder
                              activeAds: 0, // Placeholder
                         });
                     } else {
                          console.log("No profile document found for UID:", user.uid);
-                         // Create a minimal profile if document doesn't exist (optional)
-                         // Direct user to complete profile page if needed
-                          toast({ title: "Profile Incomplete", description: "Please complete your profile information."});
-                          // Use router to redirect:
-                          // import { useRouter } from 'next/navigation';
-                          // const router = useRouter();
-                          // router.push('/complete-profile');
-                          // For now, show a minimal state or message:
-                          setUserProfile(null); // Indicate profile needs creation/completion
-                          toast({ title: "Complete Profile", description: "Redirecting to complete your profile.", variant: "default"});
-                          // Temporary redirect using window.location - replace with router.push
-                          if (typeof window !== 'undefined') {
-                             window.location.href = '/complete-profile';
-                          }
+                         toast({ title: "Complete Profile Required", description: "Redirecting to complete your profile.", variant: "default"});
+                         router.push('/complete-profile'); // Redirect if profile document doesn't exist
+                         return; // Stop further execution
                     }
                 } catch (error) {
                     console.error("Failed to load profile from Firestore:", error);
@@ -101,25 +103,21 @@ export default function ProfilePage() {
                 }
             } else if (!authLoading && !user) {
                  // User is not logged in
-                 toast({ title: "Not Logged In", description: "Please log in to view your profile.", variant: "destructive"});
-                 // Redirect to login page
-                 if (typeof window !== 'undefined') {
-                    window.location.href = '/login'; // Or use router.push('/login')
-                 }
-                 // setIsLoading(false); // Set loading false after redirect attempt
+                 toast({ title: "Not Logged In", description: "Please log in to view your profile.", variant: "default"});
+                 router.push('/login'); // Redirect to login page
             }
+            // Keep loading if auth is still loading
+             if (authLoading) {
+                 setIsLoading(true);
+             }
+
         };
         loadProfile();
-    }, [user, authLoading, authError, toast]); // Add authError and toast to dependency array
+    }, [user, authLoading, authError, toast, router]); // Add router to dependency array
 
-    // TODO: Implement profile editing logic
+    // Handle profile editing navigation
     const handleEditProfile = () => {
-        // Navigate to an edit profile page or open a modal
-         // Assuming router is imported: router.push('/complete-profile');
-         if (typeof window !== 'undefined') {
-            window.location.href = '/complete-profile';
-         }
-        // toast({ description: "Edit profile functionality not implemented." });
+         router.push('/complete-profile');
     };
 
      if (isLoading || authLoading) {
@@ -131,27 +129,24 @@ export default function ProfilePage() {
     }
 
     if (!userProfile) {
-        // This case occurs if fetching failed, user is logged out, or profile doc doesn't exist and redirect is pending/failed
+        // This case handles errors during fetch or if redirection is pending
+        // It should ideally not be reached if redirects work correctly, but serves as a fallback
         return (
             <div className="text-center py-10">
                 <p>Could not load user profile.</p>
-                <p className="text-sm text-muted-foreground mb-4">You might need to log in or complete your profile.</p>
-                <Button asChild>
+                 <Button asChild className="mt-4">
                    <Link href="/login">Login</Link>
-                </Button>
-                 <Button variant="outline" asChild className="ml-2">
-                   <Link href="/complete-profile">Complete Profile</Link>
                 </Button>
             </div>
         );
     }
 
+    // Render profile only if userProfile is loaded and valid
     return (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
-             {/* Loading overlay can be added here if needed for specific actions */}
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
                 <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-primary">
-                    <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.name} />
+                    <AvatarImage src={userProfile.avatarUrl || `https://avatar.vercel.sh/${userProfile.uid}.png`} alt={userProfile.name} />
                     <AvatarFallback className="text-4xl">{userProfile.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="flex-grow text-center sm:text-left">
@@ -162,12 +157,11 @@ export default function ProfilePage() {
                             <UserCheck className="h-4 w-4 mr-1"/> Verified User
                         </Badge>
                     )}
-                     <Button variant="outline" size="sm" className="mt-3" onClick={handleEditProfile}>
+                     <Button variant="outline" size="sm" className="mt-3 ml-0 sm:ml-2" onClick={handleEditProfile}>
                         <Edit className="h-4 w-4 mr-1" /> Edit Profile
                      </Button>
                 </div>
-                <div className="text-center sm:text-right flex-shrink-0">
-                     {/* Placeholder for Ad counts - fetch separately if needed */}
+                <div className="text-center sm:text-right flex-shrink-0 mt-4 sm:mt-0">
                      <p className="text-lg font-semibold">{userProfile.activeAds ?? 0} / {userProfile.totalAds ?? 0}</p>
                      <p className="text-sm text-muted-foreground">Active / Total Ads</p>
                      <Button asChild className="mt-2">
@@ -183,7 +177,7 @@ export default function ProfilePage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Contact Information</CardTitle>
-                         <CardDescription>This information may be visible on your ads.</CardDescription>
+                         <CardDescription>This information may be visible on your ads based on your privacy settings.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                          {userProfile.email && (
@@ -205,7 +199,7 @@ export default function ProfilePage() {
                             </div>
                         )}
                          {!userProfile.email && !userProfile.phone && !userProfile.location && (
-                            <p className="text-sm text-muted-foreground">No contact information provided.</p>
+                            <p className="text-sm text-muted-foreground">No contact information provided. <Link href="/complete-profile" className='underline text-primary'>Edit Profile</Link></p>
                          )}
                     </CardContent>
                 </Card>
@@ -218,15 +212,10 @@ export default function ProfilePage() {
                     <CardContent>
                         {userProfile.age && <p className="text-sm mb-2"><strong>Age:</strong> {userProfile.age}</p>}
                         <p className="text-muted-foreground">{userProfile.bio || 'No bio provided.'}</p>
+                        {!userProfile.bio && <Link href="/complete-profile" className='text-sm underline text-primary mt-2 inline-block'>Add Bio</Link>}
                     </CardContent>
                 </Card>
             </div>
-
-             {/* TODO: Add sections for Settings, Notifications, etc. as needed */}
-             {/* <Separator className="my-8" />
-             <h2 className="text-2xl font-semibold mb-4">Settings</h2>
-             ... */}
-
         </div>
     );
 }
