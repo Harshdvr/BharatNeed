@@ -400,6 +400,10 @@ export default function SignUpPage() {
 
     const handleEmailOtpSignUp = async () => {
          // TODO: Implement Email OTP/Link Sign-Up logic
+         // This would involve:
+         // 1. Collecting the user's email address.
+         // 2. Calling `sendSignInLinkToEmail` or a custom OTP function.
+         // 3. Handling the link/OTP verification on a separate page or logic branch.
          toast({ title: "Coming Soon", description: "Email Sign-Up is under development.", variant: "default" });
      };
 
@@ -426,8 +430,8 @@ export default function SignUpPage() {
             </Button>
 
             {/* Email OTP/Link Button (Placeholder) */}
-            <Button variant="outline" className="w-full" onClick={handleEmailOtpSignUp} disabled={true}>
-                {/* <Mail className="mr-2 h-4 w-4" /> */}
+            <Button variant="outline" className="w-full" onClick={handleEmailOtpSignUp} disabled={true} >
+                {/* <Mail className="mr-2 h-4 w-4" /> */} {/* Add Mail icon if desired */}
                 Sign Up with Email (Coming Soon)
             </Button>
 
