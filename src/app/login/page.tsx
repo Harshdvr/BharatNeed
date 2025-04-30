@@ -62,7 +62,7 @@ const DEMO_PASSWORD = 'password123';
 declare global {
     interface Window {
         grecaptcha?: any; // For potential direct reset access
-        loginRecaptchaVerifier?: RecaptchaVerifier;
+        // loginRecaptchaVerifier?: RecaptchaVerifier; // Removed, managed by ref now
         loginConfirmationResult?: ConfirmationResult; // Keep using window object for simplicity for now, could be refactored later
     }
 }
@@ -129,13 +129,11 @@ export default function LoginPage() {
       // Ensure container exists in the DOM *before* creating the verifier
       let container = document.getElementById(recaptchaContainerId);
       if (!container) {
-        console.error("Recaptcha container element not found, creating dynamically:", recaptchaContainerId);
-         // Dynamically create if missing - less ideal, should exist in JSX
-         container = document.createElement('div');
-         container.id = recaptchaContainerId;
-         document.body.appendChild(container); // Append somewhere logical, maybe near the form
-        // toast({ title: "UI Error", description: "Login UI failed to load correctly. Please refresh.", variant: "destructive" });
-        // return reject(new Error("Recaptcha container not found"));
+        console.error("Recaptcha container element not found:", recaptchaContainerId);
+        // It's better if the container is always present in the JSX.
+        // Avoid creating it dynamically unless absolutely necessary.
+        toast({ title: "UI Error", description: "Login UI failed to load correctly. Please refresh.", variant: "destructive" });
+        return reject(new Error("Recaptcha container not found"));
       }
 
       // Clear previous instance managed by ref if it exists
@@ -145,12 +143,8 @@ export default function LoginPage() {
         recaptchaVerifierRef.current = null;
         recaptchaWidgetIdRef.current = null;
       }
-      // Also clear potential global instance just in case
-      window.loginRecaptchaVerifier?.clear();
-      window.loginRecaptchaVerifier = undefined;
 
-
-       console.log("Creating new RecaptchaVerifier instance for login.");
+      console.log("Creating new RecaptchaVerifier instance for login.");
       try {
         const verifier = new RecaptchaVerifier(authInstance, recaptchaContainerId, {
           'size': 'invisible',
@@ -158,8 +152,11 @@ export default function LoginPage() {
             // reCAPTCHA solved, allow signInWithPhoneNumber.
             // For invisible reCAPTCHA, this typically means the sign-in process can proceed.
             console.log("reCAPTCHA challenge solved (callback). Response:", response);
+            // This callback might not be strictly necessary for the 'invisible' size
+            // as the promise from signInWithPhoneNumber resolves upon success.
           },
           'expired-callback': () => {
+            console.error("reCAPTCHA challenge expired (expired-callback).");
             toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
             recaptchaVerifierRef.current?.clear();
             recaptchaVerifierRef.current = null;
@@ -169,7 +166,7 @@ export default function LoginPage() {
           },
           'error-callback': (error: any) => {
             console.error("reCAPTCHA error (error-callback):", error);
-            toast({ title: "reCAPTCHA Error", description: `Failed to verify. ${error?.message || 'Please try again.'}`, variant: "destructive"});
+            toast({ title: "reCAPTCHA Error", description: `Verification failed. ${error?.message || 'Please try again.'}`, variant: "destructive"});
             recaptchaVerifierRef.current?.clear();
             recaptchaVerifierRef.current = null;
             recaptchaWidgetIdRef.current = null;
@@ -251,13 +248,17 @@ export default function LoginPage() {
                 const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
                 if (!appVerifier) {
                      console.error("reCAPTCHA setup failed, cannot send OTP.");
+                     // Error toast is handled inside setupRecaptcha
                      throw new Error("reCAPTCHA Verifier not available.");
                 }
 
                 console.log("Using appVerifier:", appVerifier);
                 console.log("Attempting to send OTP to:", values.phone);
+
+                // signInWithPhoneNumber uses the rendered reCAPTCHA implicitly
                 const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
-                window.loginConfirmationResult = confirmationResult; // Store globally for simplicity, could use ref
+
+                window.loginConfirmationResult = confirmationResult; // Store globally for simplicity
                 setOtpSent(true);
                 form.reset({...values, otp: ''}); // Clear OTP field after sending
                 toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
@@ -299,29 +300,39 @@ export default function LoginPage() {
             console.error('Error Message:', error.message);
 
             // Attempt to reset reCAPTCHA only if it exists and we were sending OTP
+            // Don't reset if the error was during OTP *verification*
             if (!otpSent && recaptchaVerifierRef.current) {
                 console.warn("Resetting reCAPTCHA due to Send OTP error.");
-                recaptchaVerifierRef.current.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                 try {
+                    recaptchaVerifierRef.current.clear();
+                } catch (clearError) {
+                    console.error("Error clearing reCAPTCHA:", clearError);
+                } finally {
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
             }
 
             const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
             let description = `Error: ${error.message || 'Unknown error.'}`;
 
-            // Handle specific configuration errors more clearly
-            if (error.code === 'auth/configuration-not-found') {
-                description = "reCAPTCHA configuration error. Please ensure Phone Auth is enabled in Firebase and the page has loaded correctly. Refreshing might help.";
+            // Specific error messages
+            if (error.code === 'auth/captcha-check-failed') {
+                description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
+                setOtpSent(false); // Force user to restart the process
             } else if (error.code === 'auth/invalid-phone-number') {
                 description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
             } else if (error.code === 'auth/invalid-verification-code') {
                 description = 'Invalid OTP entered. Please try again.';
+                form.setValue('otp', ''); // Clear the OTP field on invalid code
+            } else if (error.code === 'auth/code-expired') {
+                description = 'The verification code has expired. Please send a new one.';
+                setOtpSent(false); // Reset to send OTP again
             } else if (error.code === 'auth/too-many-requests') {
                  description = 'Too many attempts. Please try again later.';
+                 setOtpSent(false); // Prevent further immediate attempts
             } else if (error.code?.includes('auth/network-request-failed')) {
                  description = 'Network error. Please check your connection and try again.';
-            } else if (error.message?.includes('reCAPTCHA')) {
-                 description = 'reCAPTCHA verification failed. Please try again.';
             }
 
 
@@ -330,8 +341,9 @@ export default function LoginPage() {
                 description: description,
                 variant: 'destructive',
             });
-             // Optionally reset OTP state based on error (e.g., don't reset for invalid code, do reset for expired session)
-             if (error.message.includes('expired') || error.code === 'auth/code-expired' || error.code === 'auth/session-expired') {
+
+            // If the session expired during OTP verification, reset
+             if (error.message.includes('expired') || error.code === 'auth/session-expired') {
                   setOtpSent(false);
              }
         } finally {
@@ -345,11 +357,21 @@ export default function LoginPage() {
   };
 
   const handleDemoLogin = () => {
-    form.setValue('email', DEMO_EMAIL);
-    form.setValue('password', DEMO_PASSWORD);
-    // Directly submit the form with demo credentials
-    handleLogin({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
-  };
+    if (loginType !== 'email') {
+        // Switch to email tab if not already there
+        setLoginType('email');
+        // Delay setting values slightly to allow tab switch UI update
+        setTimeout(() => {
+            form.reset({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
+            handleLogin({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
+        }, 50);
+    } else {
+        form.setValue('email', DEMO_EMAIL);
+        form.setValue('password', DEMO_PASSWORD);
+        // Directly submit the form with demo credentials
+        handleLogin({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
+    }
+};
 
 
   return (
@@ -362,8 +384,7 @@ export default function LoginPage() {
         )}
          {/* Container for invisible reCAPTCHA - MUST exist in the DOM when setupRecaptcha is called */}
         {/* It's often placed outside the main form content, but needs to be in the DOM */}
-        <div id={recaptchaContainerId} style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
-        {/* Removed Forgot Password placeholder */}
+        <div id={recaptchaContainerId} className="absolute -top-96 -left-96"></div>
 
 
       <Card className="mx-auto max-w-sm w-full">
@@ -412,9 +433,7 @@ export default function LoginPage() {
                         <FormItem>
                             <div className="flex items-center">
                                 <FormLabel>Password</FormLabel>
-                                <Link href="#" className="ml-auto inline-block text-sm underline text-muted-foreground hover:text-foreground">
-                                    {/* Forgot password functionality TBD */}
-                                </Link>
+                                {/* Removed Forgot Password placeholder link */}
                             </div>
                             <FormControl>
                             <Input type="password" {...field} disabled={loading}/>
