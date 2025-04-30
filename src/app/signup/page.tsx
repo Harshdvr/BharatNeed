@@ -73,6 +73,11 @@ declare global {
     }
 }
 
+// --- Demo Account Credentials (for reference, cannot be used for signup) ---
+const DEMO_EMAIL = 'test@example.com';
+// --------------------------------------------------------------------------
+
+
 export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -137,6 +142,8 @@ export default function SignUpPage() {
              container = document.createElement('div');
              container.id = recaptchaContainerId;
              document.body.appendChild(container); // Append somewhere logical
+             toast({ title: "UI Error", description: "Sign up UI failed to load correctly. Please refresh.", variant: "destructive" });
+             return reject(new Error("Recaptcha container not found"));
         }
 
         // Clear previous instance if exists
@@ -210,6 +217,18 @@ export default function SignUpPage() {
     // console.log("Age submitted:", values.age);
 
     if (signUpType === 'email' && 'email' in values && 'password' in values) {
+      // --- Prevent Demo Email Signup ---
+      if (values.email === DEMO_EMAIL) {
+        setLoading(false);
+        toast({
+          title: 'Signup Not Allowed',
+          description: 'This email is reserved for demo purposes. Please use a different email.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // ----------------------------------
+
       console.log("Attempting email signup for:", values.email);
       try {
         const userCredential = await createUserWithEmailAndPassword(authInstance, values.email!, values.password!);

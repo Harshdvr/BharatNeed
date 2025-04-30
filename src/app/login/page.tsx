@@ -51,6 +51,11 @@ const phoneSchema = z.object({
 type LoginFormValues = z.infer<typeof emailSchema> | z.infer<typeof phoneSchema>;
 type LoginType = 'email' | 'phone';
 
+// --- Demo Account Credentials ---
+const DEMO_EMAIL = 'test@example.com';
+const DEMO_PASSWORD = 'password123';
+// --------------------------------
+
 // Refactor: Use useRef for verifier and confirmationResult instead of window object
 // Use global window object only for reCAPTCHA instance if necessary for callbacks,
 // but prefer refs for internal state management.
@@ -205,6 +210,18 @@ export default function LoginPage() {
     setLoading(true);
 
     if (loginType === 'email' && 'email' in values && 'password' in values) {
+      // --- Demo Login Check ---
+      if (values.email === DEMO_EMAIL && values.password === DEMO_PASSWORD) {
+        console.log("Attempting demo login...");
+        // Simulate a slight delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setLoading(false);
+        toast({ title: 'Demo Login Successful', description: 'Welcome, Demo User!' });
+        router.push('/'); // Redirect to home or dashboard
+        return; // Stop further execution
+      }
+      // --- End Demo Login Check ---
+
       // --- Email Login ---
       console.log("Attempting email login with:", values.email);
       try {
@@ -327,8 +344,12 @@ export default function LoginPage() {
     }
   };
 
-  // --- Google Login (Placeholder) ---
-  // ... (keep commented out or implement)
+  const handleDemoLogin = () => {
+    form.setValue('email', DEMO_EMAIL);
+    form.setValue('password', DEMO_PASSWORD);
+    // Directly submit the form with demo credentials
+    handleLogin({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
+  };
 
 
   return (
@@ -342,7 +363,7 @@ export default function LoginPage() {
          {/* Container for invisible reCAPTCHA - MUST exist in the DOM when setupRecaptcha is called */}
         {/* It's often placed outside the main form content, but needs to be in the DOM */}
         <div id={recaptchaContainerId} style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
-        <div>Forgot password page will be here</div>
+        {/* Removed Forgot Password placeholder */}
 
 
       <Card className="mx-auto max-w-sm w-full">
@@ -392,7 +413,7 @@ export default function LoginPage() {
                             <div className="flex items-center">
                                 <FormLabel>Password</FormLabel>
                                 <Link href="#" className="ml-auto inline-block text-sm underline text-muted-foreground hover:text-foreground">
-                                    Forgot password?
+                                    {/* Forgot password functionality TBD */}
                                 </Link>
                             </div>
                             <FormControl>
@@ -405,6 +426,14 @@ export default function LoginPage() {
                      <Button type="submit" className="w-full" disabled={loading}>
                         {loading ? 'Processing...' : 'Login with Email'}
                      </Button>
+                      {/* Demo Account Login Button */}
+                      <Button variant="outline" type="button" className="w-full" onClick={handleDemoLogin} disabled={loading}>
+                         Login as Demo User
+                      </Button>
+                      {/* Display Demo Credentials */}
+                      <div className="text-xs text-muted-foreground text-center mt-2">
+                          Demo: {DEMO_EMAIL} / {DEMO_PASSWORD}
+                      </div>
                 </>
                ) : (
                 <>
@@ -473,3 +502,4 @@ export default function LoginPage() {
     </>
   );
 }
+
