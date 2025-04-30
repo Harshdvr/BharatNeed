@@ -40,7 +40,6 @@ import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
 const commonSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
-  // Removed age validation - optional field on complete-profile page
 });
 
 // Email signup schema
@@ -74,10 +73,6 @@ declare global {
         signUpConfirmationResult?: ConfirmationResult; // Keep using window object for simplicity for now
     }
 }
-
-// --- Demo Account Credentials (for reference, cannot be used for signup) ---
-const DEMO_EMAIL = 'test@example.com';
-// --------------------------------------------------------------------------
 
 
 export default function SignUpPage() {
@@ -202,17 +197,6 @@ export default function SignUpPage() {
     const displayName = `${values.firstName} ${values.lastName}`;
 
     if (signUpType === 'email' && 'email' in values && 'password' in values) {
-      // --- Prevent Demo Email Signup ---
-      if (values.email === DEMO_EMAIL) {
-        setLoading(false);
-        toast({
-          title: 'Signup Not Allowed',
-          description: 'This email is reserved for demo purposes. Please use a different email.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      // ----------------------------------
 
       console.log("Attempting email signup for:", values.email);
       try {
@@ -253,7 +237,8 @@ export default function SignUpPage() {
                 const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
                 if (!appVerifier) {
                      console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
-                     throw new Error("reCAPTCHA Verifier setup failed.");
+                     setLoading(false); // Stop loading if setup fails
+                     return; // Exit if setup failed
                 }
 
                  console.log("Using appVerifier for signup:", appVerifier);
@@ -552,4 +537,3 @@ export default function SignUpPage() {
     </div>
   );
 }
-

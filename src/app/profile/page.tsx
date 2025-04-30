@@ -27,6 +27,7 @@ interface UserProfile {
     phone: string | null;
     location: string | null;
     createdAt: any; // Firestore Timestamp or Date
+    memberSince?: string; // Add memberSince derived property
     bio: string | null;
     avatarUrl: string | null; // Assuming you store this
     isVerified: boolean; // You might derive this or store it
@@ -77,30 +78,24 @@ export default function ProfilePage() {
                     } else {
                          console.log("No profile document found for UID:", user.uid);
                          // Create a minimal profile if document doesn't exist (optional)
-                         setUserProfile({
-                             uid: user.uid,
-                             name: user.displayName || 'New User',
-                             email: user.email,
-                             phone: user.phoneNumber,
-                             location: null,
-                             createdAt: new Date(), // Use current date as fallback
-                             memberSince: format(new Date(), 'MMMM yyyy'),
-                             bio: null,
-                             avatarUrl: user.photoURL,
-                             isVerified: user.emailVerified || !!user.phoneNumber,
-                             totalAds: 0,
-                             activeAds: 0,
-                             isProfileComplete: false,
-                             age: null,
-                         });
-                         if (!user.displayName) {
-                            toast({ title: "Complete Profile", description: "Please complete your profile information."});
-                            // Consider redirecting to /complete-profile here if isProfileComplete is false
-                         }
+                         // Direct user to complete profile page if needed
+                          toast({ title: "Profile Incomplete", description: "Please complete your profile information."});
+                          // Use router to redirect:
+                          // import { useRouter } from 'next/navigation';
+                          // const router = useRouter();
+                          // router.push('/complete-profile');
+                          // For now, show a minimal state or message:
+                          setUserProfile(null); // Indicate profile needs creation/completion
+                          toast({ title: "Complete Profile", description: "Redirecting to complete your profile.", variant: "default"});
+                          // Temporary redirect using window.location - replace with router.push
+                          if (typeof window !== 'undefined') {
+                             window.location.href = '/complete-profile';
+                          }
                     }
                 } catch (error) {
                     console.error("Failed to load profile from Firestore:", error);
                     toast({ title: "Error", description: "Could not load profile data.", variant: "destructive"});
+                    setUserProfile(null); // Clear profile on error
                 } finally {
                     setIsLoading(false);
                 }
@@ -108,7 +103,9 @@ export default function ProfilePage() {
                  // User is not logged in
                  toast({ title: "Not Logged In", description: "Please log in to view your profile.", variant: "destructive"});
                  // Redirect to login page
-                 window.location.href = '/login'; // Or use router.push('/login')
+                 if (typeof window !== 'undefined') {
+                    window.location.href = '/login'; // Or use router.push('/login')
+                 }
                  // setIsLoading(false); // Set loading false after redirect attempt
             }
         };
@@ -118,7 +115,10 @@ export default function ProfilePage() {
     // TODO: Implement profile editing logic
     const handleEditProfile = () => {
         // Navigate to an edit profile page or open a modal
-         router.push('/complete-profile'); // Reuse complete-profile page for editing
+         // Assuming router is imported: router.push('/complete-profile');
+         if (typeof window !== 'undefined') {
+            window.location.href = '/complete-profile';
+         }
         // toast({ description: "Edit profile functionality not implemented." });
     };
 
@@ -131,12 +131,24 @@ export default function ProfilePage() {
     }
 
     if (!userProfile) {
-        // This case might occur if fetching failed or user is logged out but redirect hasn't happened yet
-        return <div className="text-center py-10">Could not load user profile or user not logged in.</div>;
+        // This case occurs if fetching failed, user is logged out, or profile doc doesn't exist and redirect is pending/failed
+        return (
+            <div className="text-center py-10">
+                <p>Could not load user profile.</p>
+                <p className="text-sm text-muted-foreground mb-4">You might need to log in or complete your profile.</p>
+                <Button asChild>
+                   <Link href="/login">Login</Link>
+                </Button>
+                 <Button variant="outline" asChild className="ml-2">
+                   <Link href="/complete-profile">Complete Profile</Link>
+                </Button>
+            </div>
+        );
     }
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
+             {/* Loading overlay can be added here if needed for specific actions */}
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
                 <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-primary">
                     <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.name} />
@@ -218,4 +230,3 @@ export default function ProfilePage() {
         </div>
     );
 }
-
