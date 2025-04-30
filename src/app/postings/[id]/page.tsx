@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react'; // Import useState, useEffect
@@ -7,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { IndianRupee, MapPin, MessageSquare, Phone, Share2, Tag, User } from "lucide-react";
+import { IndianRupee, MapPin, MessageSquare, Phone, Share2, Tag, User, Heart } from "lucide-react"; // Added Heart
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from 'next/navigation'; // Using App Router hook
@@ -28,6 +29,7 @@ interface Posting {
     sellerSince: string;
     phone: string;
     verified: boolean;
+    isFavorite: boolean; // Added isFavorite
 }
 
 
@@ -37,11 +39,11 @@ const getPostingDetails = async (id: string): Promise<Posting | null> => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1500));
     const postings: Posting[] = [
-        { id: '1', type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP. Contact for details. Experienced plumber preferred.', image: 'https://picsum.photos/seed/plumber/600/400', sellerName: 'Amit Patel', sellerSince: 'Member since 2023', phone: '+91 98XXXXXX01', verified: true },
-        { id: '2', type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes. Freshly prepared. Bulk orders accepted.', image: 'https://picsum.photos/seed/pickles/600/400', sellerName: 'Sunita Rao', sellerSince: 'Member since 2022', phone: '+91 99XXXXXX02', verified: false },
-        { id: '3', type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week. Food and accommodation provided. Call for wage details.', image: 'https://picsum.photos/seed/harvest/600/400', sellerName: 'Rajesh Singh', sellerSince: 'Member since 2024', phone: '+91 91XXXXXX03', verified: true },
-        { id: '4', type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10. Focus on concept clarity and practice. Weekend batches available.', image: 'https://picsum.photos/seed/tuition/600/400', sellerName: 'Deepa Khanna', sellerSince: 'Member since 2021', phone: '+91 95XXXXXX04', verified: true },
-        { id: '5', type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week. Must know Canva/Figma. Send portfolio link.', image: 'https://picsum.photos/seed/designer/600/400', sellerName: 'Creative Solutions', sellerSince: 'Member since 2023', phone: '+91 92XXXXXX05', verified: false },
+        { id: '1', type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP. Contact for details. Experienced plumber preferred.', image: 'https://picsum.photos/seed/plumber/600/400', sellerName: 'Amit Patel', sellerSince: 'Member since 2023', phone: '+91 98XXXXXX01', verified: true, isFavorite: false },
+        { id: '2', type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes. Freshly prepared. Bulk orders accepted.', image: 'https://picsum.photos/seed/pickles/600/400', sellerName: 'Sunita Rao', sellerSince: 'Member since 2022', phone: '+91 99XXXXXX02', verified: false, isFavorite: true },
+        { id: '3', type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week. Food and accommodation provided. Call for wage details.', image: 'https://picsum.photos/seed/harvest/600/400', sellerName: 'Rajesh Singh', sellerSince: 'Member since 2024', phone: '+91 91XXXXXX03', verified: true, isFavorite: false },
+        { id: '4', type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10. Focus on concept clarity and practice. Weekend batches available.', image: 'https://picsum.photos/seed/tuition/600/400', sellerName: 'Deepa Khanna', sellerSince: 'Member since 2021', phone: '+91 95XXXXXX04', verified: true, isFavorite: false },
+        { id: '5', type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week. Must know Canva/Figma. Send portfolio link.', image: 'https://picsum.photos/seed/designer/600/400', sellerName: 'Creative Solutions', sellerSince: 'Member since 2023', phone: '+91 92XXXXXX05', verified: false, isFavorite: false },
     ];
     const found = postings.find(p => p.id === id);
     // Simulate not found scenario
@@ -110,6 +112,19 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         toast({ description: "Chat functionality not implemented yet." });
      }
 
+      // TODO: Implement actual favoriting logic (likely Server Action)
+     const handleToggleFavorite = () => {
+        if (!posting) return;
+        // Requires user to be logged in - Add auth check later
+        setPosting(prev => prev ? { ...prev, isFavorite: !prev.isFavorite } : null);
+        console.log(`Toggled favorite for post ${posting.id}. New state: ${!posting.isFavorite}`);
+        toast({
+            description: !posting.isFavorite ? "Added to favorites!" : "Removed from favorites.",
+        });
+        // Add Server Action call here to update Firestore
+     };
+
+
     if (isLoading) {
         return (
             <div className="flex justify-center items-center min-h-[60vh]">
@@ -145,6 +160,17 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px"
                                 priority // Prioritize loading the main image
                             />
+                             {/* Favorite Button Overlay on Image */}
+                            {/* TODO: Add check if user is logged in before showing */}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                                onClick={handleToggleFavorite}
+                                aria-label={posting.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                                >
+                                <Heart className={`h-5 w-5 transition-colors ${posting.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                            </Button>
                          </div>
                     </Card>
 

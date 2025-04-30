@@ -1,19 +1,24 @@
+
+'use client'; // Required for useState and onClick handlers
+
+import { useState } from 'react'; // Import useState
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-// Removed LoadingSpinner import as it's not needed for initial load here
-import { PlusCircle, MapPin, Clock, Tag, IndianRupee } from 'lucide-react';
+import LoadingSpinner from "@/components/loading-spinner";
+import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react'; // Added Heart
 import Link from "next/link";
-import Image from "next/image"; // Import next/image
+import Image from "next/image";
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 // Placeholder data for postings - Added image URLs
 // TODO: Fetch this data asynchronously and add a loading state
 const postings = [
-  { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200' },
-  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200' },
-  { id: 3, type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200' },
-  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200' },
-  { id: 5, type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200' },
+  { id: 1, type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200', isFavorite: false }, // Added isFavorite
+  { id: 2, type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200', isFavorite: true }, // Added isFavorite
+  { id: 3, type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200', isFavorite: false }, // Added isFavorite
+  { id: 4, type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200', isFavorite: false }, // Added isFavorite
+  { id: 5, type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200', isFavorite: false }, // Added isFavorite
 ];
 
 // Placeholder for category icons
@@ -30,11 +35,32 @@ const getCategoryIcon = (category: string): React.ElementType => {
   return categoryIcons[category] || Tag; // Default to Tag icon
 };
 
+
 export default function Home() {
   // TODO: Add state for loading data, e.g., const [isLoading, setIsLoading] = useState(true);
   // TODO: Fetch postings data in useEffect or similar
+  const [currentPostings, setCurrentPostings] = useState(postings); // State for postings data
+  const { toast } = useToast();
+
+  // TODO: Implement actual favoriting logic (likely Server Action)
+  const handleToggleFavorite = (postId: number) => {
+    // Requires user to be logged in - Add auth check later
+    setCurrentPostings(prevPostings =>
+      prevPostings.map(post =>
+        post.id === postId ? { ...post, isFavorite: !post.isFavorite } : post
+      )
+    );
+    const isNowFavorite = currentPostings.find(p => p.id === postId)?.isFavorite;
+    console.log(`Toggled favorite for post ${postId}. New state: ${!isNowFavorite}`);
+    toast({
+      description: !isNowFavorite ? "Added to favorites!" : "Removed from favorites.",
+    });
+    // Add Server Action call here to update Firestore
+  };
+
 
   // TODO: Render LoadingSpinner while isLoading is true
+  // if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="relative min-h-full">
@@ -77,19 +103,32 @@ export default function Home() {
       {/* Postings Grid */}
       {/* TODO: Replace with loading state or actual data */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
-        {postings.map((post) => {
+        {currentPostings.map((post) => {
           const CategoryIcon = getCategoryIcon(post.category);
           return (
-          <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
-            <Link href={`/postings/${post.id}`} className="block relative w-full aspect-[3/2] bg-muted">
-                 <Image
-                    src={post.image || 'https://picsum.photos/300/200'} // Use post image or default
-                    alt={post.title}
-                    fill // Use fill to cover the container
-                    style={{ objectFit: 'cover' }} // Cover the area
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw" // Responsive sizes
-                 />
-            </Link>
+          <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card"> {/* Added group/card */}
+             <div className="relative w-full aspect-[3/2]"> {/* Wrap image and favorite button */}
+                 <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
+                    <Image
+                        src={post.image || 'https://picsum.photos/300/200'} // Use post image or default
+                        alt={post.title}
+                        fill // Use fill to cover the container
+                        style={{ objectFit: 'cover' }} // Cover the area
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw" // Responsive sizes
+                    />
+                 </Link>
+                {/* Favorite Button Overlay */}
+                {/* TODO: Add check if user is logged in before showing */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                    onClick={() => handleToggleFavorite(post.id)}
+                    aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    >
+                    <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                 </Button>
+            </div>
             <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4"> {/* Moved padding here */}
               <CardHeader className="p-0 pb-3"> {/* Removed padding */}
                 <div className="flex justify-between items-start gap-2">

@@ -332,6 +332,7 @@ export default function LoginPage() {
 
 
   return (
+    <>
     <div className="flex items-center justify-center py-12 relative">
         {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-50">
@@ -341,6 +342,7 @@ export default function LoginPage() {
          {/* Container for invisible reCAPTCHA - MUST exist in the DOM when setupRecaptcha is called */}
         {/* It's often placed outside the main form content, but needs to be in the DOM */}
         <div id={recaptchaContainerId} style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
+        <div>Forgot password page will be here</div>
 
 
       <Card className="mx-auto max-w-sm w-full">
@@ -468,5 +470,6 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }
