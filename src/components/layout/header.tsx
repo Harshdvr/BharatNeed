@@ -2,35 +2,33 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react'; // Import useEffect and useState
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, UserCircle, LogOut, Settings, Heart, ListOrdered } from 'lucide-react'; // Keep icons if needed for future dropdown
+import { Search, LogOut } from 'lucide-react'; // Removed unused icons
 import LanguageSwitcher from '@/components/language-switcher';
 import LocationSelector from '@/components/location-selector';
 import BharatNeedLogo from '@/components/bharat-need-logo';
-import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
-import { auth } from '@/lib/firebase/clientApp'; // Import auth instance (can be null)
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth } from '@/lib/firebase/clientApp';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-// DropdownMenu imports removed as dropdown is no longer the primary method
-// import {
-//   DropdownMenu,
-//   DropdownMenuContent,
-//   DropdownMenuItem,
-//   DropdownMenuLabel,
-//   DropdownMenuSeparator,
-//   DropdownMenuTrigger,
-// } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { Skeleton } from '../ui/skeleton'; // Import Skeleton for loading state
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { Skeleton } from '../ui/skeleton';
+import { useRouter } from 'next/navigation';
 
 
 export default function Header() {
-  // IMPORTANT: Check if auth is initialized before using the hook
-  const [user, loading, error] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")]; // Default to loading if auth is null or undefined
+  const [user, loading, error] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
   const { toast } = useToast();
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
+  const [isClient, setIsClient] = useState(false); // State to track client-side rendering
+
+  // Ensure component only renders auth-dependent UI on the client
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
 
   const handleLogout = async () => {
      if (!auth) {
@@ -47,11 +45,18 @@ export default function Header() {
     }
   };
 
-  // Handle case where auth failed to initialize
-   if (error) {
-     console.error("Firebase Auth Hook Error:", error);
-     // Optionally render an error indicator in the header
-   }
+  // Handle case where auth failed to initialize (client-side)
+   useEffect(() => {
+     if (error && isClient) { // Only show toast on client after mount
+       console.error("Firebase Auth Hook Error:", error);
+       // Avoid showing toast directly in header, rely on specific pages for critical auth errors
+       // toast({
+       //   title: "Authentication Error",
+       //   description: "Could not initialize authentication.",
+       //   variant: "destructive",
+       // });
+     }
+   }, [error, isClient, toast]);
 
 
   return (
@@ -77,32 +82,40 @@ export default function Header() {
         {/* Actions */}
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <LanguageSwitcher />
-          {loading ? (
-             // Show skeleton loaders while auth state is loading
-             <Skeleton className="h-9 w-9 rounded-full" />
-          ) : user ? (
-             // User is logged in - Show simplified view: Avatar + Logout Button (or maybe just Logout)
-             <>
-                {/* Optionally show Avatar linking to profile */}
-                 <Button variant="ghost" className="relative h-9 w-9 rounded-full" asChild>
-                    <Link href="/profile">
-                         <Avatar className="h-9 w-9">
-                             <AvatarImage src={user.photoURL || `https://avatar.vercel.sh/${user.uid}.png`} alt={user.displayName || 'User'} />
-                             <AvatarFallback>{user.displayName?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
-                         </Avatar>
-                    </Link>
-                 </Button>
-                <Button size="sm" variant="outline" onClick={handleLogout}>
-                    <LogOut className="mr-1 h-4 w-4" /> Logout
+
+          {/* Only render auth-dependent part on the client */}
+          {isClient ? (
+            loading ? (
+              // Show skeleton loaders while auth state is loading
+              <Skeleton className="h-9 w-9 rounded-full" />
+            ) : user ? (
+              // User is logged in - Show Avatar + Logout Button
+              <>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full" asChild>
+                  <Link href="/profile" aria-label="View Profile">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={user.photoURL || `https://avatar.vercel.sh/${user.uid}.png`} alt={user.displayName || 'User'} />
+                      <AvatarFallback>{user.displayName?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                  </Link>
                 </Button>
-             </>
+                <Button size="sm" variant="outline" onClick={handleLogout}>
+                  <LogOut className="mr-1 h-4 w-4" /> Logout
+                </Button>
+              </>
+            ) : (
+              // User is logged out - Show single Login / Sign Up button
+              <Button size="sm" asChild>
+                <Link href="/login">Login / Sign Up</Link>
+              </Button>
+            )
           ) : (
-            // User is logged out - Show single Login / Sign Up button
-            <Button size="sm" asChild>
-               <Link href="/login">Login / Sign Up</Link>
-            </Button>
+             // Render a placeholder (e.g., Skeleton) on the server and before hydration
+             <Skeleton className="h-9 w-24 rounded-md" /> // Placeholder for button/avatar area
           )}
-           {error && <span className='text-destructive text-xs ml-2'>!</span>}
+          {/* Auth error indicator - only render on client if error exists */}
+          {/* Removing the error indicator directly in header to avoid hydration mismatch */}
+          {/* {isClient && error && <span className='text-destructive text-xs ml-2'>!</span>} */}
         </div>
       </div>
 
