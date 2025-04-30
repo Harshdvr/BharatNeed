@@ -108,21 +108,37 @@ export default function LoginPage() {
   // Separate useEffect for cleanup
   useEffect(() => {
     return () => {
-        console.log("LoginPage cleanup: Clearing reCAPTCHA verifier if exists.");
-        recaptchaVerifierRef.current?.clear();
-        recaptchaVerifierRef.current = null;
-        recaptchaWidgetIdRef.current = null;
-        window.loginConfirmationResult = undefined;
-        // Safely attempt to clear the window object property
+        console.log("LoginPage cleanup: Attempting to clear reCAPTCHA verifier if exists.");
+        // Safely clear using the ref
+        if (recaptchaVerifierRef.current) {
+            try {
+                recaptchaVerifierRef.current.clear();
+                console.log("Cleared reCAPTCHA verifier using ref.");
+            } catch (e) {
+                console.error("Error clearing reCAPTCHA verifier using ref:", e);
+            } finally {
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+            }
+        }
+
+        // Safely clear the window object property (secondary check)
         if (window.loginRecaptchaVerifier && typeof window.loginRecaptchaVerifier.clear === 'function') {
           try {
              window.loginRecaptchaVerifier.clear();
              console.log("Cleared window.loginRecaptchaVerifier");
           } catch (e) {
              console.error("Error clearing window.loginRecaptchaVerifier:", e);
+             // Avoid throwing errors from cleanup
+             if (e instanceof Error && e.message.includes('auth/internal-error')) {
+                console.warn("Caught Firebase internal error during cleanup, likely already handled or verifier invalid.");
+             }
+          } finally {
+            window.loginRecaptchaVerifier = undefined;
           }
         }
-        window.loginRecaptchaVerifier = undefined;
+
+        window.loginConfirmationResult = undefined; // Clear confirmation result
     };
   }, []);
 
@@ -161,9 +177,14 @@ export default function LoginPage() {
       // Clean up previous verifier instance if exists in ref
       if (recaptchaVerifierRef.current) {
          console.log("Clearing previous reCAPTCHA verifier instance from ref.");
-         recaptchaVerifierRef.current.clear();
-         recaptchaVerifierRef.current = null;
-         recaptchaWidgetIdRef.current = null;
+         try {
+             recaptchaVerifierRef.current.clear();
+         } catch (e) {
+             console.warn("Error clearing previous ref verifier:", e);
+         } finally {
+             recaptchaVerifierRef.current = null;
+             recaptchaWidgetIdRef.current = null;
+         }
       }
        // Also clear window property if exists
         if (window.loginRecaptchaVerifier) {
@@ -172,8 +193,9 @@ export default function LoginPage() {
                 console.log("Cleared previous window.loginRecaptchaVerifier.");
             } catch (e) {
                 console.error("Error clearing previous window.loginRecaptchaVerifier:", e);
+            } finally {
+                window.loginRecaptchaVerifier = undefined;
             }
-            window.loginRecaptchaVerifier = undefined;
         }
 
         console.log("Creating new RecaptchaVerifier instance for login.");
@@ -194,25 +216,37 @@ export default function LoginPage() {
                 'expired-callback': () => {
                     console.error("reCAPTCHA challenge expired (expired-callback).");
                     toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP/Link again.", variant: "destructive" });
-                    recaptchaVerifierRef.current?.clear();
-                    recaptchaVerifierRef.current = null;
-                    recaptchaWidgetIdRef.current = null;
+                    if (recaptchaVerifierRef.current) {
+                        try { recaptchaVerifierRef.current.clear(); } catch (e) { console.warn("Error clearing expired ref verifier:", e); }
+                        recaptchaVerifierRef.current = null;
+                        recaptchaWidgetIdRef.current = null;
+                    }
+                    if (window.loginRecaptchaVerifier) {
+                         try { window.loginRecaptchaVerifier.clear(); } catch (e) { console.warn("Error clearing expired window verifier:", e); }
+                         window.loginRecaptchaVerifier = undefined;
+                    }
                     setOtpSent(false);
                     reject(new Error("reCAPTCHA expired"));
                 },
                 'error-callback': (error: any) => {
                     console.error("reCAPTCHA error (error-callback):", error);
                     toast({ title: "reCAPTCHA Error", description: `Verification failed. ${error?.message || 'Please try again.'}`, variant: "destructive"});
-                    recaptchaVerifierRef.current?.clear();
-                    recaptchaVerifierRef.current = null;
-                    recaptchaWidgetIdRef.current = null;
+                     if (recaptchaVerifierRef.current) {
+                        try { recaptchaVerifierRef.current.clear(); } catch (e) { console.warn("Error clearing error ref verifier:", e); }
+                        recaptchaVerifierRef.current = null;
+                        recaptchaWidgetIdRef.current = null;
+                    }
+                    if (window.loginRecaptchaVerifier) {
+                         try { window.loginRecaptchaVerifier.clear(); } catch (e) { console.warn("Error clearing error window verifier:", e); }
+                         window.loginRecaptchaVerifier = undefined;
+                    }
                     setOtpSent(false);
                     reject(new Error("reCAPTCHA verification error"));
                 }
             });
 
             recaptchaVerifierRef.current = verifier; // Store in ref
-            window.loginRecaptchaVerifier = verifier; // Also store in window for this example
+            window.loginRecaptchaVerifier = verifier; // Also store in window for compatibility
 
             verifier.render().then((widgetId) => {
                 console.log("reCAPTCHA rendered successfully. Widget ID:", widgetId);
@@ -221,9 +255,11 @@ export default function LoginPage() {
             }).catch((error) => {
                 console.error("Recaptcha render failed:", error);
                 toast({ title: "reCAPTCHA Error", description: "Could not initialize reCAPTCHA. Refresh might help.", variant: "destructive" });
-                recaptchaVerifierRef.current?.clear(); // Clean up on render fail
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing failed-render ref verifier:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
                 window.loginRecaptchaVerifier = undefined;
                 reject(error);
             });
@@ -307,14 +343,35 @@ export default function LoginPage() {
 
          // Attempt reset on error if verifier exists in ref (setupRecaptcha should handle this on retry anyway)
          // It's generally safer to let setupRecaptcha manage the cleanup and recreation.
-         // if (recaptchaVerifierRef.current) { ... }
+         if (recaptchaVerifierRef.current) {
+            try {
+                recaptchaVerifierRef.current.clear();
+                console.log("Cleared verifier ref on error.");
+            } catch(e) {
+                console.warn("Error clearing verifier ref on error:", e);
+            } finally {
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+            }
+         }
+         if (window.loginRecaptchaVerifier) {
+             try {
+                 window.loginRecaptchaVerifier.clear();
+                 console.log("Cleared window verifier on error.");
+             } catch (e) {
+                 console.warn("Error clearing window verifier on error:", e);
+             } finally {
+                 window.loginRecaptchaVerifier = undefined;
+             }
+         }
+
 
         const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
         let description = `Error: ${error.message || 'Unknown error.'}`;
 
          // Specific error handling...
-         if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) {
-            description = 'reCAPTCHA verification failed. Please try sending the OTP/Link again.';
+         if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || (error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) || error.code === 'auth/internal-error') {
+            description = 'reCAPTCHA verification failed or network issue. Please try sending the OTP again.';
             setOtpSent(false);
         } else if (error.code === 'auth/invalid-phone-number') {
             description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
@@ -385,6 +442,7 @@ export default function LoginPage() {
       if (!email) {
          // User opened the link on a different device. To prevent session fixation
          // attacks, ask the user to provide the email again. For example:
+         // This is a basic prompt, consider a more user-friendly modal/input
          email = window.prompt('Please provide your email for confirmation');
          if (!email) {
              toast({ title: 'Sign In Failed', description: 'Email is required to complete sign-in.', variant: 'destructive' });
@@ -403,8 +461,10 @@ export default function LoginPage() {
          // Check if this is a new user and redirect to profile completion if needed
          await checkProfileAndRedirect(userCredential.user);
 
-         // Remove the sign-in link parameters from the URL
-         window.history.replaceState({}, document.title, window.location.pathname);
+         // Remove the sign-in link parameters from the URL for cleaner UX
+         if (window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+         }
 
       } catch (error: any) {
          console.error('Error signing in with email link:', error);
@@ -597,7 +657,16 @@ export default function LoginPage() {
                                 setOtpSent(false);
                                 form.reset({...form.getValues(), otp: ''}); // Keep phone number, reset OTP
                                 window.loginConfirmationResult = undefined;
-                                // No need to clear verifier ref here, setupRecaptcha handles it on next send attempt
+                                // Safely clear reCAPTCHA if needed
+                                if (recaptchaVerifierRef.current) {
+                                    try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing verifier on change/resend:", e); }
+                                    recaptchaVerifierRef.current = null;
+                                    recaptchaWidgetIdRef.current = null;
+                                }
+                                if (window.loginRecaptchaVerifier) {
+                                    try { window.loginRecaptchaVerifier.clear(); } catch(e) { console.warn("Error clearing window verifier on change/resend:", e); }
+                                    window.loginRecaptchaVerifier = undefined;
+                                }
                             }} className="text-sm" type="button" disabled={loading}>
                                 Change Number or Resend OTP
                             </Button>

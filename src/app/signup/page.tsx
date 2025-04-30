@@ -30,6 +30,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   sendSignInLinkToEmail, // Import Email Link functions
+  getAdditionalUserInfo,
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -109,13 +110,36 @@ export default function SignUpPage() {
 
   useEffect(() => {
     return () => {
-      console.log("SignUpPage cleanup: Clearing reCAPTCHA verifier if exists.");
-      recaptchaVerifierRef.current?.clear();
-      recaptchaVerifierRef.current = null;
-      recaptchaWidgetIdRef.current = null;
-      window.signUpConfirmationResult = undefined;
-      window.signUpRecaptchaVerifier?.clear();
-      window.signUpRecaptchaVerifier = undefined;
+      console.log("SignUpPage cleanup: Attempting to clear reCAPTCHA verifier if exists.");
+       // Safely clear using the ref
+       if (recaptchaVerifierRef.current) {
+           try {
+               recaptchaVerifierRef.current.clear();
+               console.log("Cleared sign-up reCAPTCHA verifier using ref.");
+           } catch (e) {
+               console.error("Error clearing sign-up reCAPTCHA verifier using ref:", e);
+           } finally {
+               recaptchaVerifierRef.current = null;
+               recaptchaWidgetIdRef.current = null;
+           }
+       }
+
+       // Safely clear the window object property
+      if (window.signUpRecaptchaVerifier && typeof window.signUpRecaptchaVerifier.clear === 'function') {
+          try {
+              window.signUpRecaptchaVerifier.clear();
+              console.log("Cleared window.signUpRecaptchaVerifier");
+          } catch(e) {
+               console.error("Error clearing window.signUpRecaptchaVerifier:", e);
+               // Avoid throwing errors from cleanup
+                if (e instanceof Error && e.message.includes('auth/internal-error')) {
+                  console.warn("Caught Firebase internal error during cleanup, likely already handled or verifier invalid.");
+                }
+          } finally {
+            window.signUpRecaptchaVerifier = undefined;
+          }
+      }
+      window.signUpConfirmationResult = undefined; // Clear confirmation result
     };
   }, []);
 
@@ -132,6 +156,7 @@ export default function SignUpPage() {
   useEffect(() => {
     form.reset(); // Reset form values
     // Need to trigger re-validation based on the new schema, zodResolver might need re-initialization or use a key prop on Form
+    setOtpSent(false); // Reset OTP state when method changes
   }, [signUpMethod, form]);
 
 
@@ -149,22 +174,33 @@ export default function SignUpPage() {
         return reject(new Error("Recaptcha container not found"));
       }
 
-      if (recaptchaVerifierRef.current) {
-        console.log("Using existing reCAPTCHA verifier instance via ref for signup.");
-        recaptchaVerifierRef.current.render().then((widgetId) => {
-             recaptchaWidgetIdRef.current = widgetId;
-             resolve(recaptchaVerifierRef.current);
-         }).catch((error) => {
-             console.error("Error re-rendering existing signup reCAPTCHA:", error);
-             recaptchaVerifierRef.current?.clear();
-             recaptchaVerifierRef.current = null;
-             recaptchaWidgetIdRef.current = null;
-             createNewVerifier(resolve, reject);
-         });
-      } else {
+       // Clean up previous verifier instance if exists in ref
+        if (recaptchaVerifierRef.current) {
+            console.log("Clearing previous sign-up reCAPTCHA verifier instance from ref.");
+             try {
+                recaptchaVerifierRef.current.clear();
+             } catch (e) {
+                console.warn("Error clearing previous sign-up ref verifier:", e);
+             } finally {
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+             }
+        }
+        // Also clear window property if exists
+        if (window.signUpRecaptchaVerifier) {
+             try {
+                 window.signUpRecaptchaVerifier.clear();
+                 console.log("Cleared previous window.signUpRecaptchaVerifier.");
+             } catch (e) {
+                 console.error("Error clearing previous window.signUpRecaptchaVerifier:", e);
+             } finally {
+                 window.signUpRecaptchaVerifier = undefined;
+             }
+        }
+
+
         console.log("Creating new RecaptchaVerifier instance for signup.");
         createNewVerifier(resolve, reject);
-      }
     });
   };
 
@@ -181,23 +217,36 @@ export default function SignUpPage() {
             'expired-callback': () => {
                 console.error("reCAPTCHA challenge expired (expired-callback) for signup.");
                 toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP/Link again.", variant: "destructive" });
-                recaptchaVerifierRef.current?.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch (e) { console.warn("Error clearing expired sign-up ref verifier:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
+                if (window.signUpRecaptchaVerifier) {
+                     try { window.signUpRecaptchaVerifier.clear(); } catch (e) { console.warn("Error clearing expired sign-up window verifier:", e); }
+                     window.signUpRecaptchaVerifier = undefined;
+                }
                 setOtpSent(false); // Reset phone state
                 reject(new Error("reCAPTCHA expired"));
             },
             'error-callback': (error: any) => {
                 console.error("reCAPTCHA error (error-callback) for signup:", error);
                 toast({ title: "reCAPTCHA Error", description: `Verification failed. ${error?.message || 'Please try again.'}`, variant: "destructive"});
-                recaptchaVerifierRef.current?.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch (e) { console.warn("Error clearing error sign-up ref verifier:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
+                if (window.signUpRecaptchaVerifier) {
+                     try { window.signUpRecaptchaVerifier.clear(); } catch (e) { console.warn("Error clearing error sign-up window verifier:", e); }
+                     window.signUpRecaptchaVerifier = undefined;
+                }
                 setOtpSent(false); // Reset phone state
                 reject(new Error("reCAPTCHA verification error"));
             }
             });
             recaptchaVerifierRef.current = verifier;
+            window.signUpRecaptchaVerifier = verifier; // Keep this for compatibility if needed
 
             verifier.render().then((widgetId) => {
                 console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
@@ -206,9 +255,12 @@ export default function SignUpPage() {
             }).catch((error) => {
                 console.error("Signup Recaptcha render failed:", error);
                 toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
-                recaptchaVerifierRef.current?.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing failed-render sign-up ref verifier:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
+                window.signUpRecaptchaVerifier = undefined;
                 reject(error);
             });
 
@@ -227,7 +279,7 @@ export default function SignUpPage() {
      if (signUpMethod === 'phone' && 'phone' in values) {
        await handlePhoneSignUp(values, displayName);
      } else if (signUpMethod === 'email' && 'email' in values) {
-       await handleEmailSignIn(values, displayName);
+       await handleEmailSignUp(values, displayName);
      } else {
        console.error("Invalid sign-up method or form values");
        toast({ title: "Error", description: "Invalid sign-up method selected.", variant: "destructive" });
@@ -242,11 +294,12 @@ export default function SignUpPage() {
         setLoading(false);
         return;
     }
+    let appVerifier: RecaptchaVerifier | null = null; // Declare here
 
     try {
         if (!otpSent) {
             // --- Send OTP Phase ---
-            const appVerifier = await setupRecaptcha();
+            appVerifier = await setupRecaptcha(); // Assign here
             if (!appVerifier) {
                  console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
                  setLoading(false);
@@ -255,14 +308,14 @@ export default function SignUpPage() {
 
              console.log("Using appVerifier for signup:", appVerifier);
              console.log("Attempting to send OTP for signup to:", values.phone);
-             // Ensure reCAPTCHA is rendered before calling signInWithPhoneNumber
-             await appVerifier.render();
+             // Ensure reCAPTCHA is rendered before calling signInWithPhoneNumber (render() is called in setup)
+
 
              const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
 
              window.signUpConfirmationResult = confirmationResult;
              setOtpSent(true);
-             form.reset({...values, otp: ''});
+            //  form.reset({...values, otp: ''}); // Keep name/phone, reset OTP
              toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
              console.log("Signup OTP sent, confirmation result stored.");
         } else {
@@ -274,9 +327,16 @@ export default function SignUpPage() {
              if (!window.signUpConfirmationResult) {
                 toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
                 setOtpSent(false);
-                recaptchaVerifierRef.current?.clear();
-                recaptchaVerifierRef.current = null;
-                recaptchaWidgetIdRef.current = null;
+                 // Clean up verifier if session expires
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing verifier ref on session expiry:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
+                if (window.signUpRecaptchaVerifier) {
+                     try { window.signUpRecaptchaVerifier.clear(); } catch(e) { console.warn("Error clearing window verifier on session expiry:", e); }
+                     window.signUpRecaptchaVerifier = undefined;
+                }
                 throw new Error("Confirmation session expired or invalid.");
              }
              console.log("Attempting to confirm signup OTP:", values.otp);
@@ -285,14 +345,21 @@ export default function SignUpPage() {
              if (userCredential.user) {
                  console.log("Phone user confirmed/created:", userCredential.user.uid);
                  await handleUserCreation(userCredential.user, displayName, values.phone);
-                 toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
-                 router.push('/complete-profile');
+                 // Redirect is handled within handleUserCreation
+                 // toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
+                 // router.push('/complete-profile');
 
                  // Cleanup global state and verifier on success
                  window.signUpConfirmationResult = undefined;
-                 recaptchaVerifierRef.current?.clear();
-                 recaptchaVerifierRef.current = null;
-                 recaptchaWidgetIdRef.current = null;
+                if (recaptchaVerifierRef.current) {
+                    try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing verifier ref on success:", e); }
+                    recaptchaVerifierRef.current = null;
+                    recaptchaWidgetIdRef.current = null;
+                }
+                if (window.signUpRecaptchaVerifier) {
+                     try { window.signUpRecaptchaVerifier.clear(); } catch(e) { console.warn("Error clearing window verifier on success:", e); }
+                     window.signUpRecaptchaVerifier = undefined;
+                }
              } else {
                 throw new Error("User object not found after OTP confirmation.");
              }
@@ -304,26 +371,33 @@ export default function SignUpPage() {
 
          // Attempt to reset reCAPTCHA widget if possible
          try {
-             if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
+              // Reset using ref primarily
+             if (recaptchaVerifierRef.current) {
+                  recaptchaVerifierRef.current.clear();
+                  console.log("Cleared signup reCAPTCHA ref due to error.");
+                  recaptchaVerifierRef.current = null;
+                  recaptchaWidgetIdRef.current = null;
+             } else if (window.signUpRecaptchaVerifier) {
+                  window.signUpRecaptchaVerifier.clear();
+                  console.log("Cleared window signup reCAPTCHA due to error.");
+                  window.signUpRecaptchaVerifier = undefined;
+             } else if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
                 window.grecaptcha.reset(recaptchaWidgetIdRef.current);
                 console.log("Explicitly reset signup reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
-             } else {
-                recaptchaVerifierRef.current?.clear();
+                 recaptchaWidgetIdRef.current = null; // Reset widget ID ref as well
              }
          } catch (resetError) {
             console.error("Error clearing/resetting signup reCAPTCHA:", resetError);
-         } finally {
-             recaptchaVerifierRef.current = null;
-             recaptchaWidgetIdRef.current = null;
          }
+         // No finally block needed here for refs, handled within try/catch
 
 
          const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
          let description = `Error: ${error.message || 'Unknown error.'}`;
 
          // Specific error handling...
-          if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) {
-            description = 'reCAPTCHA verification failed. Please try again.';
+          if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.code === 'auth/invalid-recaptcha-token' || (error.code === 'auth/network-request-failed' && error.message.includes('recaptcha')) || error.code === 'auth/internal-error') {
+            description = 'reCAPTCHA verification failed or network issue. Please try again.';
             setOtpSent(false); // Allow retry
         } else if (error.code === 'auth/invalid-phone-number') {
              description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
@@ -366,24 +440,25 @@ export default function SignUpPage() {
             console.log("Google Sign-Up/Login Successful:", user.uid);
 
             await handleUserCreation(user, user.displayName || 'Unnamed User');
-
-            toast({ title: "Sign Up Successful", description: "Please complete your profile." });
-            router.push('/complete-profile');
+            // Redirect is handled in handleUserCreation
 
         } catch (error: any) {
             console.error("Google Sign-Up Error:", error);
-            // Handle specific errors like popup closed by user, network error, etc.
-            toast({
-                title: "Google Sign-Up Failed",
-                description: error.message || "Could not sign up with Google.",
-                variant: "destructive",
-            });
+            if (error.code === 'auth/popup-closed-by-user') {
+                toast({ title: "Sign-Up Cancelled", description: "Google Sign-Up window was closed.", variant: "default" });
+            } else {
+                toast({
+                    title: "Google Sign-Up Failed",
+                    description: error.message || "Could not sign up with Google.",
+                    variant: "destructive",
+                });
+            }
         } finally {
             setLoading(false);
         }
     };
 
-    const handleEmailSignIn = async (values: Extract<SignUpFormValues, { email: string }>, displayName: string) => {
+    const handleEmailSignUp = async (values: Extract<SignUpFormValues, { email: string }>, displayName: string) => {
        if (!authInstance || !firestore) {
          toast({ title: "Error", description: "Service not ready.", variant: "destructive" });
          setLoading(false);
@@ -393,8 +468,8 @@ export default function SignUpPage() {
        const actionCodeSettings = {
          // URL you want to redirect back to. The domain (www.example.com) for this
          // URL must be in the authorized domains list in the Firebase Console.
-         // Redirect to complete profile after clicking link and signing in
-         url: `${window.location.origin}/`, // Redirect to home page, check for sign-in link there
+         // Redirect to login page after clicking link to complete sign-in
+         url: `${window.location.origin}/login`, // Redirect to login to complete
          handleCodeInApp: true, // This must be true.
        };
 
@@ -404,8 +479,9 @@ export default function SignUpPage() {
          // Save the email locally so you don't need to ask the user for it again
          // if they open the link on the same device.
          window.localStorage.setItem('emailForSignIn', values.email);
-         // Save the name temporarily as well, maybe in session storage or pass via URL param if safe
-         window.localStorage.setItem('nameForSignIn', displayName);
+         // Save the name temporarily as well, maybe in session storage
+         // It's better to fetch/update name AFTER user confirms via link
+         window.localStorage.setItem('nameForSignIn', displayName); // Use cautiously
 
          toast({
            title: 'Check your email',
@@ -428,41 +504,55 @@ export default function SignUpPage() {
 
 
     // Handles Firestore user document creation/update for all sign-up methods
-    // This function might be called AFTER email link sign-in is completed on the redirect page.
+    // This function might be called AFTER email link sign-in is completed on the redirect page (login page).
     const handleUserCreation = async (user: any, name: string, phone: string | null = null) => {
         if (!user || !firestore) return;
 
         const userDocRef = doc(firestore, "users", user.uid);
         try {
             const docSnap = await getDoc(userDocRef);
+
+            let isNewUser = false;
+            try {
+                const additionalUserInfo = getAdditionalUserInfo({user: user} as any);
+                isNewUser = additionalUserInfo?.isNewUser ?? !docSnap.exists(); // Use doc existence as fallback
+            } catch (infoError) {
+                console.warn("Could not get additional user info:", infoError);
+                isNewUser = !docSnap.exists();
+            }
+
             if (!docSnap.exists()) {
-                // User is new, create Firestore document
+                // User is definitely new, create Firestore document
                 await setDoc(userDocRef, {
                     uid: user.uid,
                     name: name,
                     email: user.email || null,
                     phone: phone || user.phoneNumber || null, // Use provided phone or from auth
                     createdAt: new Date(),
-                    isProfileComplete: false // Mark as incomplete, redirect handled after this
+                    isProfileComplete: false // Mark as incomplete
                 }, { merge: false }); // Don't merge if creating new
                  console.log("Firestore document created for new user:", user.uid);
+                 toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
+                 router.push('/complete-profile'); // Redirect new users to complete profile
             } else {
-                // User exists, check if name needs update (e.g., Google sign-in after phone)
+                // User exists, check if profile is complete and if name needs update
                 const existingData = docSnap.data();
                 let updateData: { [key: string]: any } = {};
-                if (existingData?.name !== name) {
+
+                 // Update name from Auth provider only if it's different AND profile is incomplete
+                 // Avoid overwriting a user-set name if profile is already complete
+                if (!existingData?.isProfileComplete && name && existingData?.name !== name) {
                     updateData.name = name;
-                    // Also update Auth profile if different
                     if (user.displayName !== name) {
                          try {
                             await updateProfile(user, { displayName: name });
-                            console.log("Auth display name updated.");
+                            console.log("Auth display name updated for existing user.");
                          } catch (authProfileError) {
                             console.warn("Could not update Auth display name:", authProfileError);
                          }
                     }
                 }
-                 // Ensure phone number is updated if signing up via phone after other methods
+                 // Update phone number if signing up via phone after other methods
                  if (phone && existingData?.phone !== phone) {
                     updateData.phone = phone;
                  }
@@ -471,24 +561,24 @@ export default function SignUpPage() {
                      await setDoc(userDocRef, updateData, { merge: true });
                      console.log("Updated details for existing user:", user.uid, updateData);
                  } else {
-                     console.log("User document already exists and matches:", user.uid);
+                     console.log("User document already exists and matches or profile complete:", user.uid);
                  }
 
-                 // Redirect to complete profile only if Firestore flag is false
+                 // Redirect existing but incomplete profiles
                  if (!existingData?.isProfileComplete) {
-                     router.push('/complete-profile');
-                     return; // Important: Return after redirect
+                    toast({ title: 'Login Successful', description: 'Please complete your profile.' });
+                    router.push('/complete-profile');
+                 } else {
+                    // Existing user with complete profile, redirect home
+                    toast({ title: 'Login Successful', description: 'Welcome back!' });
+                    router.push('/');
                  }
-                 // If profile is complete, redirect home
-                  router.push('/');
             }
-            // Redirect new users or existing users with incomplete profiles
-            router.push('/complete-profile');
 
         } catch (error) {
             console.error("Error creating/updating Firestore user document:", error);
-            toast({ title: "Profile Error", description: "Could not save initial profile data.", variant: "destructive" });
-             // Redirect home as a fallback on error
+            toast({ title: "Profile Error", description: "Could not save profile data.", variant: "destructive" });
+             // Redirect home as a fallback on Firestore error
              router.push('/');
         }
     };
@@ -618,18 +708,15 @@ export default function SignUpPage() {
                             form.reset({...form.getValues(), otp: ''});
                             window.signUpConfirmationResult = undefined;
                             // Safely clear reCAPTCHA
-                             try {
-                                if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
-                                    window.grecaptcha.reset(recaptchaWidgetIdRef.current);
-                                } else {
-                                    recaptchaVerifierRef.current?.clear();
-                                }
-                            } catch (error) {
-                                console.error("Error resetting reCAPTCHA on change number:", error);
-                            } finally {
-                                recaptchaVerifierRef.current = null;
-                                recaptchaWidgetIdRef.current = null;
-                            }
+                             if (recaptchaVerifierRef.current) {
+                                 try { recaptchaVerifierRef.current.clear(); } catch(e) { console.warn("Error clearing verifier on change/resend:", e); }
+                                 recaptchaVerifierRef.current = null;
+                                 recaptchaWidgetIdRef.current = null;
+                             }
+                             if (window.signUpRecaptchaVerifier) {
+                                 try { window.signUpRecaptchaVerifier.clear(); } catch(e) { console.warn("Error clearing window verifier on change/resend:", e); }
+                                 window.signUpRecaptchaVerifier = undefined;
+                             }
                         }} className="text-sm" type="button" disabled={loading}>
                             Change Number or Resend OTP
                         </Button>
@@ -671,4 +758,3 @@ export default function SignUpPage() {
     </div>
   );
 }
-
