@@ -78,6 +78,7 @@ export default function Header() {
              // Show skeleton loaders while auth state is loading
              <Skeleton className="h-9 w-9 rounded-full" />
           ) : user ? (
+             // User is logged in - Show dropdown menu
              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-9 w-9 rounded-full">
@@ -130,15 +131,10 @@ export default function Header() {
                 </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // Show Login/Signup buttons if not loading and no user
-            <>
-              <Button variant="ghost" size="sm" asChild>
-                 <Link href="/login">Login</Link>
-              </Button>
-              <Button size="sm" asChild>
-                 <Link href="/signup">Sign Up</Link>
-              </Button>
-            </>
+            // User is logged out - Show single Login / Sign Up button
+            <Button size="sm" asChild>
+               <Link href="/login">Login / Sign Up</Link>
+            </Button>
           )}
            {error && <span className='text-destructive text-xs ml-2'>!</span>}
         </div>
