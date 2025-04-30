@@ -12,7 +12,6 @@ import * as z from 'zod';
 import {
   Form,
   FormControl,
-  // FormDescription, // No longer needed for password
   FormField,
   FormItem,
   FormLabel,
@@ -21,7 +20,6 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth, firestore
 import {
-  // createUserWithEmailAndPassword, // Removed
   signInWithPhoneNumber,
   RecaptchaVerifier,
   updateProfile,
@@ -29,12 +27,16 @@ import {
   Auth, // Import Auth type
   getAdditionalUserInfo, // Import getAdditionalUserInfo
   getAuth, // Import getAuth if not already imported implicitly by ensureAuthInitialized
+  GoogleAuthProvider, // Import GoogleAuthProvider
+  signInWithPopup, // Import signInWithPopup
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed Tabs
 import LoadingSpinner from '@/components/loading-spinner';
-import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
+import { doc, setDoc, getDoc } from "firebase/firestore"; // Import Firestore functions
+import { Separator } from '@/components/ui/separator'; // Import Separator
+import { FcGoogle } from 'react-icons/fc'; // Using react-icons/fc for Google logo
+
 
 // Common fields schema part
 const commonSchema = z.object({
@@ -51,15 +53,16 @@ const phoneSchema = commonSchema.extend({
     path: ["otp"],
 });
 
-// Combined type for form values - now only phone
+// Type for form values (now only phone schema based)
 type SignUpFormValues = z.infer<typeof phoneSchema>;
-// type SignUpType = 'email' | 'phone'; // Removed, only phone
 
-// Declare window object augmentation for reCAPTCHA (keep as is for simplicity)
+
+// Declare window object augmentation for reCAPTCHA
 declare global {
     interface Window {
-        grecaptcha?: any; // For potential direct reset access
-        signUpConfirmationResult?: ConfirmationResult; // Keep using window object for simplicity for now
+        grecaptcha?: any;
+        signUpConfirmationResult?: ConfirmationResult;
+        signUpRecaptchaVerifier?: RecaptchaVerifier; // Specific verifier for signup
     }
 }
 
@@ -68,7 +71,6 @@ export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  // const [signUpType, setSignUpType] = useState<SignUpType>('phone'); // Default to phone
   const [otpSent, setOtpSent] = useState(false);
   const recaptchaContainerId = "recaptcha-container-signup"; // Define ID
   const [authInstance, setAuthInstance] = useState<Auth | null>(null);
@@ -81,7 +83,7 @@ export default function SignUpPage() {
   // Ensure Firebase Auth is initialized
    useEffect(() => {
      try {
-         const auth = getAuth(auth); // Ensure auth is initialized from clientApp
+         const auth = getAuth(); // Ensure auth is initialized from clientApp
          setAuthInstance(auth);
      } catch (error: any) {
          console.error("Auth initialization failed:", error);
@@ -100,12 +102,14 @@ export default function SignUpPage() {
       recaptchaVerifierRef.current?.clear();
       recaptchaVerifierRef.current = null;
       recaptchaWidgetIdRef.current = null;
-      window.signUpConfirmationResult = undefined; // Clear window object too
+      window.signUpConfirmationResult = undefined;
+      window.signUpRecaptchaVerifier?.clear(); // Clear specific signup verifier
+      window.signUpRecaptchaVerifier = undefined;
     };
   }, []); // Only run on unmount
 
   const form = useForm<SignUpFormValues>({
-    resolver: zodResolver(phoneSchema),
+    resolver: zodResolver(phoneSchema), // Use phone schema resolver
     defaultValues: { firstName: '', lastName: '', phone: '', otp: '' },
     mode: 'onChange',
   });
@@ -118,7 +122,6 @@ export default function SignUpPage() {
         return reject(new Error("Auth not ready"));
       }
 
-      // Ensure container exists in the DOM *before* creating the verifier
       let container = document.getElementById(recaptchaContainerId);
       if (!container) {
         console.error("Recaptcha container element not found:", recaptchaContainerId);
@@ -126,85 +129,93 @@ export default function SignUpPage() {
         return reject(new Error("Recaptcha container not found"));
       }
 
-      // Clear previous instance managed by ref if it exists
+      // Use ref to manage the verifier instance
       if (recaptchaVerifierRef.current) {
-        console.log("Clearing previous reCAPTCHA verifier instance via ref for signup.");
-        recaptchaVerifierRef.current.clear();
-        recaptchaVerifierRef.current = null;
-        recaptchaWidgetIdRef.current = null;
-      }
-
-      console.log("Creating new RecaptchaVerifier instance for signup.");
-      try {
-        const verifier = new RecaptchaVerifier(authInstance, recaptchaContainerId, {
-          'size': 'invisible',
-          'callback': (response: any) => {
-            console.log("reCAPTCHA verified for signup (callback). Response:", response);
-          },
-          'expired-callback': () => {
-            console.error("reCAPTCHA challenge expired (expired-callback) for signup.");
-            toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
-            recaptchaVerifierRef.current?.clear();
-            recaptchaVerifierRef.current = null;
-            recaptchaWidgetIdRef.current = null;
-            setOtpSent(false);
-            reject(new Error("reCAPTCHA expired"));
-          },
-          'error-callback': (error: any) => {
-            console.error("reCAPTCHA error (error-callback) for signup:", error);
-            toast({ title: "reCAPTCHA Error", description: `Verification failed. ${error?.message || 'Please try again.'}`, variant: "destructive"});
-            recaptchaVerifierRef.current?.clear();
-            recaptchaVerifierRef.current = null;
-            recaptchaWidgetIdRef.current = null;
-            setOtpSent(false);
-            reject(new Error("reCAPTCHA verification error"));
-          }
-        });
-        recaptchaVerifierRef.current = verifier; // Store in ref
-
-        // Render and resolve
-        verifier.render().then((widgetId) => {
-          console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
-          recaptchaWidgetIdRef.current = widgetId; // Store widget ID
-          resolve(verifier);
-        }).catch((error) => {
-          console.error("Signup Recaptcha render failed:", error);
-          toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
-          recaptchaVerifierRef.current?.clear(); // Cleanup on render fail
-          recaptchaVerifierRef.current = null;
-          recaptchaWidgetIdRef.current = null;
-          reject(error);
-        });
-
-      } catch (error) {
-        console.error("Error creating/rendering signup RecaptchaVerifier:", error);
-        toast({ title: "Setup Error", description: "Could not initialize sign up system. Please refresh.", variant: "destructive" });
-        reject(error);
+        console.log("Using existing reCAPTCHA verifier instance via ref for signup.");
+        recaptchaVerifierRef.current.render().then((widgetId) => {
+             recaptchaWidgetIdRef.current = widgetId;
+             resolve(recaptchaVerifierRef.current);
+         }).catch((error) => {
+             console.error("Error re-rendering existing signup reCAPTCHA:", error);
+             recaptchaVerifierRef.current?.clear();
+             recaptchaVerifierRef.current = null;
+             recaptchaWidgetIdRef.current = null;
+             createNewVerifier(resolve, reject); // Create new if re-render fails
+         });
+      } else {
+        console.log("Creating new RecaptchaVerifier instance for signup.");
+        createNewVerifier(resolve, reject);
       }
     });
   };
 
-   const handleSignUp = async (values: SignUpFormValues) => {
-    if (!authInstance) {
-        toast({ title: "Error", description: "Authentication service not ready.", variant: "destructive" });
-        return;
-    }
-    if (!firestore) {
-        toast({ title: "Error", description: "Database service not ready.", variant: "destructive" });
+    const createNewVerifier = (resolve: (verifier: RecaptchaVerifier) => void, reject: (reason?: any) => void) => {
+        if (!authInstance) {
+          return reject(new Error("Auth not ready during signup verifier creation"));
+        }
+        try {
+            const verifier = new RecaptchaVerifier(authInstance, recaptchaContainerId, {
+            'size': 'invisible',
+            'callback': (response: any) => {
+                console.log("reCAPTCHA verified for signup (callback). Response:", response);
+            },
+            'expired-callback': () => {
+                console.error("reCAPTCHA challenge expired (expired-callback) for signup.");
+                toast({ title: "reCAPTCHA Expired", description: "Please try sending the OTP again.", variant: "destructive" });
+                recaptchaVerifierRef.current?.clear();
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+                setOtpSent(false);
+                reject(new Error("reCAPTCHA expired"));
+            },
+            'error-callback': (error: any) => {
+                console.error("reCAPTCHA error (error-callback) for signup:", error);
+                toast({ title: "reCAPTCHA Error", description: `Verification failed. ${error?.message || 'Please try again.'}`, variant: "destructive"});
+                recaptchaVerifierRef.current?.clear();
+                recaptchaVerifierRef.current = null;
+                recaptchaWidgetIdRef.current = null;
+                setOtpSent(false);
+                reject(new Error("reCAPTCHA verification error"));
+            }
+            });
+            recaptchaVerifierRef.current = verifier; // Store in ref
+
+            verifier.render().then((widgetId) => {
+            console.log("Signup reCAPTCHA rendered successfully. Widget ID:", widgetId);
+            recaptchaWidgetIdRef.current = widgetId; // Store widget ID
+            resolve(verifier);
+            }).catch((error) => {
+            console.error("Signup Recaptcha render failed:", error);
+            toast({ title: "reCAPTCHA Error", description: "Could not initialize sign up reCAPTCHA. Refresh might help.", variant: "destructive" });
+            recaptchaVerifierRef.current?.clear();
+            recaptchaVerifierRef.current = null;
+            recaptchaWidgetIdRef.current = null;
+            reject(error);
+            });
+
+        } catch (error) {
+            console.error("Error creating/rendering signup RecaptchaVerifier:", error);
+            toast({ title: "Setup Error", description: "Could not initialize sign up system. Please refresh.", variant: "destructive" });
+            reject(error);
+        }
+  };
+
+   const handlePhoneSignUp = async (values: SignUpFormValues) => {
+    if (!authInstance || !firestore) {
+        toast({ title: "Error", description: "Authentication or database service not ready.", variant: "destructive" });
         return;
     }
     setLoading(true);
     const displayName = `${values.firstName} ${values.lastName}`;
 
-    // --- Phone Signup Only ---
     try {
         if (!otpSent) {
             // --- Send OTP Phase ---
             const appVerifier = await setupRecaptcha(); // Setup/get reCAPTCHA
             if (!appVerifier) {
                  console.error("reCAPTCHA setup failed, cannot send OTP for signup.");
-                 setLoading(false); // Stop loading if setup fails
-                 return; // Exit if setup failed
+                 setLoading(false);
+                 return;
             }
 
              console.log("Using appVerifier for signup:", appVerifier);
@@ -212,25 +223,21 @@ export default function SignUpPage() {
 
              const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
 
-             window.signUpConfirmationResult = confirmationResult; // Store globally for now
+             window.signUpConfirmationResult = confirmationResult;
              setOtpSent(true);
              form.reset({...values, otp: ''}); // Clear OTP field after sending
              toast({ title: 'OTP Sent', description: `Verification code sent to ${values.phone}` });
              console.log("Signup OTP sent, confirmation result stored.");
         } else {
             // --- Verify OTP Phase ---
-             if (!values.otp) {
-                 form.setError("otp", { type: "manual", message: "OTP is required." });
-                 throw new Error("OTP is required.");
-             }
-             if (values.otp.length !== 6) {
-                 form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
+             if (!values.otp || values.otp.length !== 6) {
+                form.setError("otp", { type: "manual", message: "OTP must be 6 digits." });
                  throw new Error("OTP must be 6 digits.");
              }
              if (!window.signUpConfirmationResult) {
                 toast({ title: 'Verification Error', description: 'Confirmation session expired or invalid. Please request OTP again.', variant: 'destructive' });
-                setOtpSent(false); // Reset state to allow resend
-                recaptchaVerifierRef.current?.clear(); // Cleanup verifier ref
+                setOtpSent(false);
+                recaptchaVerifierRef.current?.clear();
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
                 throw new Error("Confirmation session expired or invalid.");
@@ -241,45 +248,12 @@ export default function SignUpPage() {
              if (userCredential.user) {
                  console.log("Phone user confirmed/created:", userCredential.user.uid);
 
-                 const additionalUserInfo = getAdditionalUserInfo(userCredential);
-                 const isNewUser = additionalUserInfo?.isNewUser ?? true; // Assume new user if info is missing
+                 // Always update profile name, and create Firestore doc
+                 // The check inside handleUserCreation handles both new/existing logic
+                 await handleUserCreation(userCredential.user, displayName, values.phone);
 
-                 // Always update profile name, and create Firestore doc if new
-                 await updateProfile(userCredential.user, { displayName });
-                 if (isNewUser) {
-                     const userDocRef = doc(firestore, "users", userCredential.user.uid);
-                     await setDoc(userDocRef, {
-                         uid: userCredential.user.uid,
-                         name: displayName,
-                         phone: userCredential.user.phoneNumber,
-                         createdAt: new Date(),
-                         isProfileComplete: false // Flag to indicate profile needs completion
-                     }, { merge: true });
-                     toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
-                     router.push('/complete-profile'); // Redirect new users to complete profile
-                 } else {
-                    // Existing user logged in via phone
-                    // Check if Firestore doc exists, create if not (edge case)
-                     const userDocRef = doc(firestore, "users", userCredential.user.uid);
-                     const docSnap = await getDoc(userDocRef);
-                     if (!docSnap.exists()) {
-                          await setDoc(userDocRef, {
-                             uid: userCredential.user.uid,
-                             name: displayName,
-                             phone: userCredential.user.phoneNumber,
-                             createdAt: new Date(), // Or use existing auth creation time if available
-                             isProfileComplete: false // Assume incomplete if doc was missing
-                         }, { merge: true });
-                          toast({ title: 'Login Successful', description: 'Welcome back! Please complete your profile.' });
-                          router.push('/complete-profile');
-                     } else if (!docSnap.data()?.isProfileComplete) {
-                         toast({ title: 'Login Successful', description: 'Welcome back! Please complete your profile.' });
-                         router.push('/complete-profile');
-                     } else {
-                          toast({ title: 'Login Successful', description: 'Welcome back!' });
-                          router.push('/'); // Redirect existing, complete users to home
-                     }
-                 }
+                 toast({ title: 'Sign Up Successful', description: 'Please complete your profile.' });
+                 router.push('/complete-profile'); // Redirect new users to complete profile
 
                   // Cleanup on success
                   window.signUpConfirmationResult = undefined;
@@ -298,9 +272,15 @@ export default function SignUpPage() {
          if (!otpSent && recaptchaVerifierRef.current) {
             console.warn("Resetting reCAPTCHA due to Send OTP error during signup.");
              try {
-                recaptchaVerifierRef.current.clear();
+                // Explicitly reset the reCAPTCHA widget using its ID if available
+                if (recaptchaWidgetIdRef.current !== null && window.grecaptcha) {
+                     window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+                     console.log("Explicitly reset signup reCAPTCHA widget ID:", recaptchaWidgetIdRef.current);
+                } else {
+                     recaptchaVerifierRef.current.clear();
+                }
             } catch (clearError) {
-                console.error("Error clearing reCAPTCHA:", clearError);
+                console.error("Error clearing/resetting signup reCAPTCHA:", clearError);
             } finally {
                 recaptchaVerifierRef.current = null;
                 recaptchaWidgetIdRef.current = null;
@@ -310,13 +290,16 @@ export default function SignUpPage() {
          const title = otpSent ? 'OTP Verification Failed' : 'Failed to Send OTP';
          let description = `Error: ${error.message || 'Unknown error.'}`;
 
-        if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed')) {
+        // Handle specific Firebase Auth errors for better user feedback
+         if (error.code === 'auth/captcha-check-failed' || error.message?.includes('captcha-check-failed') || error.message?.includes('auth/invalid-recaptcha-token')) {
             description = 'reCAPTCHA verification failed. Please try sending the OTP again.';
             setOtpSent(false);
+             recaptchaVerifierRef.current = null; // Ensure verifier is recreated
+             recaptchaWidgetIdRef.current = null;
         } else if (error.code === 'auth/invalid-phone-number') {
              description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
-             setOtpSent(false); // Allow re-entry
-             form.setValue('phone', ''); // Clear invalid number
+             setOtpSent(false);
+             form.setValue('phone', '');
         } else if (error.code === 'auth/invalid-verification-code') {
              description = 'Invalid OTP entered. Please try again.';
              form.setValue('otp', '');
@@ -343,11 +326,82 @@ export default function SignUpPage() {
          });
          if (error.message.includes('expired') || error.code === 'auth/session-expired') {
              setOtpSent(false);
+             recaptchaVerifierRef.current = null; // Ensure verifier is recreated
+             recaptchaWidgetIdRef.current = null;
          }
     } finally {
         setLoading(false);
     }
   };
+
+    const handleGoogleSignUp = async () => {
+        if (!authInstance) {
+            toast({ title: "Error", description: "Authentication service not ready.", variant: "destructive" });
+            return;
+        }
+        setLoading(true);
+        const provider = new GoogleAuthProvider();
+        try {
+            const result = await signInWithPopup(authInstance, provider);
+            const user = result.user;
+            console.log("Google Sign-Up/Login Successful:", user.uid);
+
+            // Create/update user profile in Firestore
+            await handleUserCreation(user, user.displayName || 'Unnamed User');
+
+            toast({ title: "Sign Up Successful", description: "Please complete your profile." });
+            router.push('/complete-profile'); // Always redirect Google sign-ups to complete profile for now
+
+        } catch (error: any) {
+            console.error("Google Sign-Up Error:", error);
+            toast({
+                title: "Google Sign-Up Failed",
+                description: error.message || "Could not sign up with Google.",
+                variant: "destructive",
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Handles Firestore user document creation/update for all sign-up methods
+    const handleUserCreation = async (user: any, name: string, phone: string | null = null) => {
+        if (!user || !firestore) return;
+
+        const userDocRef = doc(firestore, "users", user.uid);
+        try {
+            const docSnap = await getDoc(userDocRef);
+            if (!docSnap.exists()) {
+                // Only create the document if it truly doesn't exist
+                await setDoc(userDocRef, {
+                    uid: user.uid,
+                    name: name,
+                    email: user.email || null, // Get email from Google auth if available
+                    phone: phone || user.phoneNumber || null, // Get phone from Phone auth or Google if linked
+                    createdAt: new Date(),
+                    isProfileComplete: false // Always false on initial creation
+                }, { merge: false }); // Use merge: false to ensure it's a creation
+                 console.log("Firestore document created for new user:", user.uid);
+            } else {
+                // If doc exists, ensure name is updated (e.g., if user logged in via phone first then Google)
+                if (docSnap.data()?.name !== name) {
+                    await updateProfile(user, { displayName: name }); // Update Auth profile
+                    await setDoc(userDocRef, { name: name }, { merge: true }); // Update Firestore name
+                    console.log("Updated display name for existing user:", user.uid);
+                }
+                 console.log("User document already exists:", user.uid);
+            }
+        } catch (error) {
+            console.error("Error creating/updating Firestore user document:", error);
+            toast({ title: "Profile Error", description: "Could not save initial profile data.", variant: "destructive" });
+            // Decide how to handle this - maybe still redirect?
+        }
+    };
+
+    const handleEmailOtpSignUp = async () => {
+         // TODO: Implement Email OTP/Link Sign-Up logic
+         toast({ title: "Coming Soon", description: "Email Sign-Up is under development.", variant: "default" });
+     };
 
   return (
     <div className="flex items-center justify-center py-12 relative">
@@ -361,12 +415,28 @@ export default function SignUpPage() {
 
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader>
-          <CardTitle className="text-xl">Sign Up with Phone</CardTitle>
-          <CardDescription>Enter your details to create an account</CardDescription>
+          <CardTitle className="text-xl">Sign Up</CardTitle>
+          <CardDescription>Create your account using one of the methods below.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="grid gap-6">
+           {/* Google Sign-Up Button */}
+           <Button variant="outline" className="w-full" onClick={handleGoogleSignUp} disabled={loading}>
+                <FcGoogle className="mr-2 h-4 w-4" />
+                Sign Up with Google
+            </Button>
+
+            {/* Email OTP/Link Button (Placeholder) */}
+            <Button variant="outline" className="w-full" onClick={handleEmailOtpSignUp} disabled={true}>
+                {/* <Mail className="mr-2 h-4 w-4" /> */}
+                Sign Up with Email (Coming Soon)
+            </Button>
+
+             <Separator />
+
+            {/* Phone Sign Up Form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSignUp)} className="grid gap-4">
+            <form onSubmit={form.handleSubmit(handlePhoneSignUp)} className="grid gap-4">
+               <CardDescription className="text-center">Or sign up with phone</CardDescription>
                <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -432,11 +502,11 @@ export default function SignUpPage() {
                     <Button variant="link" size="sm" onClick={() => {
                         setOtpSent(false);
                         form.reset({...form.getValues(), otp: ''}); // Reset OTP field
-                        window.signUpConfirmationResult = undefined; // Clear confirmation ref/state
-                        recaptchaVerifierRef.current?.clear(); // Clear verifier ref
+                        window.signUpConfirmationResult = undefined;
+                        recaptchaVerifierRef.current?.clear();
                         recaptchaVerifierRef.current = null;
                         recaptchaWidgetIdRef.current = null;
-                    }} className="text-sm" type="button" disabled={loading}> {/* Added type="button" */}
+                    }} className="text-sm" type="button" disabled={loading}>
                         Change Number or Resend OTP
                     </Button>
                     )}
