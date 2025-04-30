@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -307,6 +306,8 @@ export default function LoginPage() {
                 setOtpSent(false); // Force user to restart the process
             } else if (error.code === 'auth/invalid-phone-number') {
                 description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
+                 setOtpSent(false); // Allow user to correct number
+                 form.setValue('phone', ''); // Clear invalid phone number
             } else if (error.code === 'auth/invalid-verification-code') {
                 description = 'Invalid OTP entered. Please try again.';
                 form.setValue('otp', ''); // Clear the OTP field on invalid code
@@ -398,9 +399,14 @@ export default function LoginPage() {
                         name="password"
                         render={({ field }) => (
                         <FormItem>
-                            <div className="flex items-center">
+                            <div className="flex items-center justify-between">
                                 <FormLabel>Password</FormLabel>
-                                {/* Removed Forgot Password placeholder link */}
+                                <Link
+                                  href="/forgot-password" // Link to the forgot password page
+                                  className="text-sm text-primary hover:underline"
+                                >
+                                  Forgot Password?
+                                </Link>
                             </div>
                             <FormControl>
                             <Input type="password" {...field} disabled={loading}/>
