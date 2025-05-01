@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Edit, IndianRupee, MapPin, MoreVertical, Trash2 } from "lucide-react";
+import { Edit, IndianRupee, MapPin, MoreVertical, Trash2, Tag, Clock, MessageSquare, Heart, Share2, Flag } from "lucide-react"; // Added Tag and other icons
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast';
@@ -32,6 +33,8 @@ interface Posting {
     datePosted?: any; // Firestore Timestamp or Date
     userId?: string; // Added userId field
     createdAt?: any; // Firestore Timestamp
+    postType?: 'need' | 'offer'; // Added postType
+    urgency?: 'low' | 'medium' | 'high' | 'urgent'; // Added urgency
 }
 
 // Mock Data - Replace with actual data fetching
@@ -53,12 +56,16 @@ const ad: Posting = {
   createdAt: new Date(Date.now() - 3600000 * 3), // 3 hours ago
   canBid: true,
   canNegotiate: true,
+  status: 'active',
 };
 
 
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
     // TODO: Fetch actual ad data based on params.id
     // const { data: ad, isLoading, error } = useQuery(['posting', params.id], fetchPosting);
+    const [isLoading, setIsLoading] = useState(false); // Add loading state for async operations like bidding/negotiating
+    const { toast } = useToast();
+    const [user, authLoading] = useAuthState(auth); // Get current user state
 
     /*
     if (isLoading) {
@@ -68,13 +75,68 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
     if (error || !ad) {
         return <div>Error loading post or post not found.</div>;
     }
-
-    // Convert Firestore timestamp if needed
-     const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
     */
 
+    // Convert Firestore timestamp if needed
+    const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
+
+    // TODO: Implement handlers for bid, negotiate, favorite, share, report
+    const handleBidSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setIsLoading(true);
+        console.log("Submitting bid...");
+        // Add server action call here
+        setTimeout(() => {
+             toast({ description: "Bid submitted (Simulated)" });
+             setIsLoading(false);
+             (e.target as HTMLFormElement).reset();
+        }, 1000);
+    };
+
+     const handleNegotiateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setIsLoading(true);
+        console.log("Sending offer...");
+        // Add server action call here
+        setTimeout(() => {
+             toast({ description: "Offer sent (Simulated)" });
+             setIsLoading(false);
+             (e.target as HTMLFormElement).reset();
+        }, 1000);
+    };
+
+     const handleToggleFavorite = () => {
+        if (!user) return toast({ title: "Login Required", variant: "destructive" });
+        console.log("Toggling favorite...");
+        // Add server action call here
+        toast({ description: "Favorite status toggled (Simulated)" });
+     }
+
+     const handleShare = () => {
+        console.log("Sharing...");
+        // Add share logic (navigator.share or copy link)
+        toast({ description: "Share functionality not implemented." });
+     }
+
+     const handleReport = () => {
+        if (!user) return toast({ title: "Login Required", variant: "destructive" });
+        console.log("Reporting ad...");
+        // Add server action call here
+        toast({ description: "Ad reported (Simulated)", variant: "destructive" });
+     }
+
+     const handleContactSeller = () => {
+         if (!user) return toast({ title: "Login Required", variant: "destructive" });
+         console.log("Initiating chat...");
+         // Redirect to chat page with seller ID
+         // router.push(`/chat?userId=${ad.userId}`) // Assuming router is imported
+         toast({ description: "Chat functionality not implemented." });
+     }
+
+
     return (
-        <div className="container mx-auto px-4 py-8"><LoadingSpinner />
+        <div className="container mx-auto px-4 py-8">
+            {authLoading && <LoadingSpinner />} {/* Show spinner if auth state is loading */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
@@ -88,7 +150,17 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 fill
                                 style={{ objectFit: 'cover' }}
                                 priority
+                                data-ai-hint="posting detail image"
                             />
+                             {/* Badge Overlay */}
+                             <div className="absolute top-2 left-2 z-10">
+                                <Badge
+                                    variant={ad.postType === 'need' ? 'destructive' : 'default'}
+                                    className="text-xs py-0.5 px-1.5 rounded-sm shadow"
+                                >
+                                    {ad.postType === 'need' ? 'Need' : 'Offer'}
+                                </Badge>
+                             </div>
                         </div>
                          {/* Thumbnails - TODO: Add carousel logic */}
                          {ad.imageUrls && ad.imageUrls.length > 1 && (
@@ -101,6 +173,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                             fill
                                             style={{ objectFit: 'cover' }}
                                             className="rounded"
+                                            data-ai-hint="posting thumbnail"
                                         />
                                     </div>
                                 ))}
@@ -112,10 +185,10 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                     <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle className="text-2xl">{ad.title || 'Untitled Post'}</CardTitle>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground pt-2">
                                 <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {ad.location || 'N/A'}</span>
                                 <span className="flex items-center gap-1"><Tag className="h-4 w-4" /> {ad.category || 'N/A'}</span>
-                                {/* <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> Posted {datePostedFormatted}</span> */}
+                                <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> Posted {datePostedFormatted}</span>
                             </div>
                              <p className="font-semibold text-lg text-primary pt-2 flex items-center gap-1">
                                 <IndianRupee className="h-5 w-5" /> {ad.budget || 'N/A'}
@@ -135,47 +208,59 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                         <CardHeader>
                              <CardTitle>Actions</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="space-y-3">
                              {ad?.canBid && (
-                                <div className="border rounded-lg p-3 bg-muted/30">
-                                    <h4 className="text-sm font-medium mb-2">Submit a Bid</h4>
-                                    <Input type="number" placeholder="Your Bid (₹)" className="mb-2 bg-background"/>
-                                    <Button size="sm" className="w-full">Submit Bid</Button>
-                                     {/* TO DO: Implement bid submission logic here (Server Action) */}
-                                </div>
+                                <form onSubmit={handleBidSubmit} className="border rounded-lg p-3 bg-muted/30 space-y-2">
+                                    <h4 className="text-sm font-medium">Submit a Bid</h4>
+                                    <Input type="number" name="bidAmount" placeholder="Your Bid (₹)" required className="mb-2 bg-background" disabled={isLoading}/>
+                                    <Button size="sm" className="w-full" type="submit" disabled={isLoading}>
+                                       {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Submit Bid'}
+                                    </Button>
+                                </form>
                             )}
                             {ad?.canNegotiate && (
-                                <div className="border rounded-lg p-3 bg-muted/30">
-                                     <h4 className="text-sm font-medium mb-2">Negotiate Price</h4>
-                                     <Input type="number" placeholder="Your Offer (₹)" className="mb-2 bg-background"/>
-                                     <Button size="sm" className="w-full">Send Offer</Button>
-                                      {/* TO DO: Implement send offer logic here (Server Action) */}
-                                </div>
+                                <form onSubmit={handleNegotiateSubmit} className="border rounded-lg p-3 bg-muted/30 space-y-2">
+                                     <h4 className="text-sm font-medium">Negotiate Price</h4>
+                                     <Input type="number" name="offerAmount" placeholder="Your Offer (₹)" required className="mb-2 bg-background" disabled={isLoading}/>
+                                     <Button size="sm" className="w-full" type="submit" disabled={isLoading}>
+                                         {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Send Offer'}
+                                     </Button>
+                                </form>
                             )}
-                             <Button variant="default" className="w-full">Contact Seller</Button>
-                             {/* TODO: Add Favorite Button Logic */}
-                             <Button variant="outline" className="w-full">Add to Favorites</Button>
-                             <Button variant="outline" className="w-full">Share</Button>
-                             <Button variant="destructive" className="w-full">Report Ad</Button>
+                             <Button variant="default" className="w-full" onClick={handleContactSeller} disabled={isLoading}>
+                                 <MessageSquare className="mr-2 h-4 w-4" /> Contact Poster
+                             </Button>
+                             <div className="grid grid-cols-3 gap-2">
+                                 <Button variant="outline" size="sm" className="w-full" onClick={handleToggleFavorite} disabled={isLoading}>
+                                     <Heart className="mr-1 h-4 w-4" /> Favorite
+                                 </Button>
+                                 <Button variant="outline" size="sm" className="w-full" onClick={handleShare} disabled={isLoading}>
+                                     <Share2 className="mr-1 h-4 w-4" /> Share
+                                 </Button>
+                                 <Button variant="outline" size="sm" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleReport} disabled={isLoading}>
+                                      <Flag className="mr-1 h-4 w-4" /> Report
+                                 </Button>
+                             </div>
                         </CardContent>
                      </Card>
 
                      {/* User Info Card */}
                      <Card className="shadow-md">
                         <CardHeader>
-                            <CardTitle>Seller Information</CardTitle>
+                            <CardTitle>Poster Information</CardTitle>
                             {/* Add placeholder for seller details */}
                             <CardDescription>Details about the person who posted this.</CardDescription>
                         </CardHeader>
                         <CardContent className="flex items-center gap-4">
                              <Avatar className="h-12 w-12">
-                                <AvatarImage src="https://picsum.photos/id/102/100/100" alt="Seller Avatar" />
+                                <AvatarImage src="https://picsum.photos/id/102/100/100" alt="Seller Avatar" data-ai-hint="seller avatar"/>
                                 <AvatarFallback>SN</AvatarFallback>
                             </Avatar>
                             <div>
                                 <p className="font-semibold">Seller Name (Mock)</p>
                                 <p className="text-xs text-muted-foreground">Member since Mock Date</p>
                                 {/* Optional: Add verification badge */}
+                                {/* <Badge variant="secondary" className="mt-1 text-xs"><UserCheck className="h-3 w-3 mr-1"/>Verified</Badge> */}
                             </div>
                         </CardContent>
                          <CardFooter>
