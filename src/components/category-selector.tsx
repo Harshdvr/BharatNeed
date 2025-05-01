@@ -35,14 +35,19 @@ export default function CategorySelector({ selectedCategory, onSelectCategory }:
           key={category.name}
           variant="outline"
           className={cn(
-            'flex flex-col items-center justify-center h-20 w-20 p-2 rounded-lg border shadow-sm transition-colors',
+            'flex flex-col items-center justify-center h-20 w-20 p-2 rounded-lg border shadow-sm transition-colors', // Base shadow
+            'hover:shadow-md hover:border-primary/50', // Add hover shadow and border effect
             selectedCategory === category.name.toLowerCase()
-              ? 'bg-primary/10 border-primary text-primary'
-              : 'text-foreground hover:bg-muted/50 hover:border-muted-foreground/30'
+              ? 'bg-primary/10 border-primary text-primary' // Selected state
+              : 'text-foreground hover:bg-muted/50' // Default and hover state
           )}
           onClick={() => onSelectCategory(category.name.toLowerCase())}
         >
-          <category.icon className="h-6 w-6 mb-1" />
+          {/* Apply orange color (primary) to the icon */}
+          <category.icon className={cn(
+              "h-6 w-6 mb-1",
+              selectedCategory === category.name.toLowerCase() ? 'text-primary' : 'text-primary' // Ensure icon is orange (primary)
+           )} />
           <span className="text-xs font-medium">{category.name}</span>
         </Button>
       ))}
