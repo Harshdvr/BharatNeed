@@ -145,39 +145,41 @@ const mockUserPreferences = {
 };
 const mockUserLocation = null; // Replace with actual location logic if available
 
-// Scoring Function (Simplified)
+// Scoring Function (Simplified based on prompt)
 const calculateScore = (post: any, preferences: typeof mockUserPreferences): number => {
   let score = 0;
   const now = new Date();
-  const postDate = post.createdAt instanceof Date ? post.createdAt : new Date();
+  // Ensure createdAt is a Date object for comparison
+  const postDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date();
   const hoursSincePost = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60);
 
-  // Category Match Bonus
+  // Category Match Bonus (Weight: 5)
   if (preferences.categories.includes(post.category?.toLowerCase())) {
     score += 5;
   }
 
-  // Keyword Match Bonus (simple title check)
+  // Keyword Match Bonus (simple title check) (Weight: 3)
   if (preferences.keywords.some(keyword => post.title?.toLowerCase().includes(keyword))) {
     score += 3;
   }
 
-  // Trending Bonus (using 'featured' flag as proxy)
+  // Trending Bonus (using 'featured' flag as proxy) (Weight: 4)
   if (post.featured) {
     score += 4;
   }
 
-  // Recency Bonus (Higher score for newer posts)
+  // Recency Bonus (Higher score for newer posts) (Weight: 2)
   if (hoursSincePost <= 24) { // Within 1 day
-    score += 3;
+    score += 2; // Max recency bonus
   } else if (hoursSincePost <= 72) { // Within 3 days
-    score += 1;
+    score += 1; // Medium recency bonus
   }
+  // Older posts get 0 recency bonus
 
   // Proximity Bonus (Placeholder - cannot calculate with mock strings)
   // if (isNearby(post.location, userLocation)) { score += 4; }
 
-  // Image Bonus
+  // Image Bonus (Weight: 1)
   if (post.imageUrls && post.imageUrls.length > 0) {
     score += 1;
   }
@@ -196,11 +198,13 @@ const getPersonalizedFeed = (
     .map(post => ({
       ...post,
       score: calculateScore(post, preferences),
-      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : new Date()).getTime()) / (1000 * 60 * 60) <= 48 // Mark as recent if within 48 hours
+      // Mark as recent if within 48 hours (for the 'New' badge)
+      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date()).getTime()) / (1000 * 60 * 60) <= 48
     }))
     .sort((a, b) => b.score - a.score); // Sort by score descending
 
   // Simple mixing: Take top scored posts. A real implementation would use the 40/30/30 logic.
+  // For mock data, sorting by score and applying limit is sufficient.
   return scoredPosts.slice(0, limit);
 };
 
@@ -253,7 +257,8 @@ export default function Home() {
 
       const feed = getPersonalizedFeed(filteredMockPosts, mockUserPreferences);
       setPersonalizedFeed(feed);
-      setRecentlyViewedPostings(filteredMockPosts.filter(p => p.recentlyViewed).sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : new Date()).getTime())); // Sort recent by date
+      // Sort recently viewed separately by date
+      setRecentlyViewedPostings(filteredMockPosts.filter(p => p.recentlyViewed).sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : b.createdAt?.toDate ? b.createdAt.toDate() : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : a.createdAt?.toDate ? a.createdAt.toDate() : new Date()).getTime()));
       setIsLoading(false);
     }, 500); // Simulate network delay
 
@@ -310,8 +315,8 @@ export default function Home() {
     <div className="relative min-h-full">
       {isLoading && <LoadingSpinner className="fixed inset-0 bg-background/80 z-50" />} {/* Fixed position spinner */}
 
-      {/* Hero Section */}
-      <div className="text-center py-16 px-4 bg-gradient-to-b from-[--gradient-start] via-[--gradient-middle] to-[--gradient-end] dark:from-[--gradient-start] dark:via-[--gradient-middle] dark:to-[--gradient-end]">
+      {/* Hero Section with Background Gradient */}
+       <div className="text-center py-16 px-4 bg-gradient-to-b from-[--gradient-start] via-[--gradient-middle] to-[--gradient-end] dark:from-[--gradient-start] dark:via-[--gradient-middle] dark:to-[--gradient-end]">
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl mb-4">
           Find What You Need,<br/> Offer What You Have.
         </h1>
@@ -322,7 +327,7 @@ export default function Home() {
              <Button
                 variant="default"
                 size="lg"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md rounded-md px-8 py-3"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md rounded-md px-8 py-3" // Standard button style
                 asChild
               >
                 <Link href="/post-need">
@@ -420,6 +425,7 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
     isRecentlyViewed?: boolean
 }) {
     const CategoryIcon = CategorySelector.categoryDetails.find(c => c.name.toLowerCase() === post.category?.toLowerCase())?.icon || Tag;
+    // Ensure createdAt is a Date object before formatting
     const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
 
     // Use date-fns for better relative time formatting
@@ -443,8 +449,8 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
      let typeBadgeText = post.postType === 'need' ? 'Need' : 'Offer';
      let typeBadgeVariant: "default" | "destructive" | "secondary" | "outline" = post.postType === 'need' ? 'destructive' : 'default';
 
-     // Check if the post is recent (e.g., within 24 hours)
-     const isNew = post.isRecent; // Use the pre-calculated flag
+     // Check if the post is recent (using the flag from the algorithm)
+     const isNew = post.isRecent;
 
 
     return (
@@ -504,7 +510,8 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
               </CardContent>
               <CardFooter className="flex justify-between items-center pt-3 text-xs p-0 mt-auto border-t">
                  <span className="font-semibold text-primary text-sm">
-                    {post.budget?.toLowerCase().includes('budget:') ? post.budget : `₹${post.budget}`}
+                    {/* Display budget as is if it contains "Budget:", otherwise prepend ₹ */}
+                    {post.budget?.toLowerCase().includes('budget:') ? post.budget : `₹${post.budget || 'N/A'}`}
                  </span>
                  <span className="text-muted-foreground">{formattedDate}</span>
               </CardFooter>
