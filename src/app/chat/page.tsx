@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send } from "lucide-react";
 import { useState, useEffect } from "react"; // Import useState and useEffect
 import { handleSendMessageAction } from '@/actions/chatActions'; // Import the server action
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 // Mock Data for testing chat
 const mockContacts = [
@@ -57,6 +58,7 @@ export default function ChatPage() {
   const [contacts, setContacts] = useState(mockContacts); // Use mock contacts
   const [selectedChatId, setSelectedChatId] = useState<string | null>(mockContacts.length > 0 ? mockContacts[0].id : null); // Select first chat by default
   const [messages, setMessages] = useState<any[]>(selectedChatId ? mockMessages[selectedChatId as keyof typeof mockMessages] || [] : []); // Load messages for selected chat
+  const router = useRouter(); // Initialize router
 
   useEffect(() => {
     // TODO: Fetch real contacts and messages based on user authentication and selectedChatId
@@ -76,6 +78,12 @@ export default function ChatPage() {
         const formData = new FormData(event.currentTarget);
         const formElement = event.currentTarget; // Store reference to form
         const messageText = formData.get('message') as string;
+
+        if (!messageText?.trim()) {
+            setLoading(false);
+            // Optionally show a toast message
+            return;
+        }
 
         // Optimistically update UI before calling server action
         const newMessage = {
@@ -109,8 +117,16 @@ export default function ChatPage() {
                 setMessages(prev => prev.filter(msg => msg.id !== newMessage.id));
                 // Potentially revert contact last message update as well or show error indicator
              }
-             // TODO: Show toast message for error
+             // TODO: Show toast message for error using useToast hook
         }
+    };
+
+    const handleViewProfile = (userId: string) => {
+        console.log(`Simulating navigation to profile page for user ID: ${userId}`);
+        // In a real app, if a public profile page exists at /profile/[userId]:
+        // router.push(`/profile/${userId}`);
+        // If only the logged-in user's profile exists at /profile:
+        alert(`Profile view for user ${userId} not implemented yet.`);
     };
 
   const selectedContact = contacts.find(c => c.id === selectedChatId);
@@ -123,21 +139,35 @@ export default function ChatPage() {
           <h2 className="text-lg font-semibold p-2 mb-2">Chats</h2>
           <div className="space-y-1">
             {contacts.length > 0 ? contacts.map((contact) => (
-              <Button
-                key={contact.id}
-                variant={selectedChatId === contact.id ? "secondary" : "ghost"}
-                className="w-full justify-start h-auto py-2 px-3"
-                onClick={() => setSelectedChatId(contact.id)} // Select chat on click
-              >
-                <Avatar className="h-9 w-9 mr-3">
-                  <AvatarImage src={contact.avatar} alt={contact.name} data-ai-hint="user avatar" />
-                  <AvatarFallback>{contact.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
-                </Avatar>
-                <div className="text-left overflow-hidden">
-                  <p className="text-sm font-medium truncate">{contact.name || 'Unknown User'}</p>
-                  <p className="text-xs text-muted-foreground truncate">{contact.lastMessage || 'No messages'}</p>
-                </div>
-              </Button>
+              <div key={contact.id} className="flex items-center">
+                {/* Button for selecting chat */}
+                <Button
+                  variant={selectedChatId === contact.id ? "secondary" : "ghost"}
+                  className="flex-1 justify-start h-auto py-2 px-3 text-left overflow-hidden"
+                  onClick={() => setSelectedChatId(contact.id)} // Select chat on click
+                >
+                  <div className="flex items-center w-full">
+                     {/* Make Avatar clickable */}
+                    <Avatar
+                        className="h-9 w-9 mr-3 cursor-pointer flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); handleViewProfile(contact.id); }} // Prevent button click
+                    >
+                      <AvatarImage src={contact.avatar} alt={contact.name} data-ai-hint="user avatar" />
+                      <AvatarFallback>{contact.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div className="overflow-hidden">
+                      {/* Make Name clickable */}
+                      <p
+                        className="text-sm font-medium truncate cursor-pointer hover:underline"
+                         onClick={(e) => { e.stopPropagation(); handleViewProfile(contact.id); }} // Prevent button click
+                      >
+                        {contact.name || 'Unknown User'}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{contact.lastMessage || 'No messages'}</p>
+                    </div>
+                  </div>
+                </Button>
+              </div>
             )) : (
                 <p className="text-sm text-muted-foreground text-center p-4">No chats yet.</p>
             )}
@@ -149,8 +179,11 @@ export default function ChatPage() {
       <div className="flex flex-col flex-1 bg-background">
         {selectedContact ? (
           <>
-            {/* Chat Header */}
-            <div className="flex items-center p-3 border-b">
+            {/* Chat Header - Make Avatar and Name clickable */}
+            <div
+                className="flex items-center p-3 border-b cursor-pointer hover:bg-muted/50"
+                onClick={() => handleViewProfile(selectedContact.id)}
+             >
               <Avatar className="h-9 w-9 mr-3">
                  <AvatarImage src={selectedContact.avatar} alt={selectedContact.name} data-ai-hint="recipient avatar" />
                  <AvatarFallback>{selectedContact.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
