@@ -30,33 +30,33 @@ interface CategorySelectorProps {
 
 export default function CategorySelector({ selectedCategory, onSelectCategory }: CategorySelectorProps) {
   return (
-    <div className="flex flex-wrap justify-center gap-3 mb-8">
+    <div className="flex flex-wrap justify-center gap-4 mb-8"> {/* Increased gap */}
       {categoryDetails.map((category) => (
         <Button
           key={category.name}
           variant="outline"
           className={cn(
-            'flex flex-col items-center justify-center h-20 w-20 p-2 rounded-lg border shadow-sm transition-colors', // Base shadow
+            'flex flex-col items-center justify-center h-24 w-24 p-3 rounded-lg border shadow-sm transition-colors', // Increased h-20 w-20 to h-24 w-24, adjusted padding
             selectedCategory === category.name.toLowerCase()
-              ? 'bg-primary/10 border-primary text-primary' // Selected state
-              : 'text-foreground hover:bg-primary/10 hover:border-primary hover:text-primary hover:shadow-md' // Default and hover state updated
+              ? 'bg-primary/10 border-primary text-primary shadow-md' // Added shadow-md on select
+              : 'text-foreground hover:bg-primary/10 hover:border-primary hover:text-primary hover:shadow-md'
           )}
           onClick={() => onSelectCategory(category.name.toLowerCase())}
         >
-          {/* Apply orange color (primary) to the icon - Ensure it stays orange on hover */}
+          {/* Apply orange color (primary) to the icon - Ensure it stays orange */}
           <category.icon className={cn(
-              "h-6 w-6 mb-1 text-primary" // Keep icon color primary
+              "h-8 w-8 mb-1.5 text-primary" // Increased icon size (h-6 w-6 to h-8 w-8), adjusted margin
            )} />
-          <span className="text-xs font-medium">{category.name}</span>
+          <span className="text-sm font-medium">{category.name}</span> {/* Increased text size to text-sm */}
         </Button>
       ))}
        {/* Optionally add an "All Categories" button */}
        {/* <Button
         variant={!selectedCategory ? 'secondary' : 'outline'}
-        className={cn('h-20 w-20 p-2 rounded-lg border shadow-sm')}
+        className={cn('h-24 w-24 p-3 rounded-lg border shadow-sm')} // Matched size
         onClick={() => onSelectCategory(null)}
       >
-        All
+        <span className="text-sm font-medium">All</span>
       </Button> */}
     </div>
   );
@@ -64,4 +64,5 @@ export default function CategorySelector({ selectedCategory, onSelectCategory }:
 
 // Export category details if needed elsewhere
 CategorySelector.categoryDetails = categoryDetails;
+
 
