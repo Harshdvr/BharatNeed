@@ -110,7 +110,7 @@ export default function PostNeedPage() {
                     <form onSubmit={handleFormSubmit} className="space-y-6">
                          {/* Post Type Selection */}
                         <div className="space-y-2">
-                            <Label htmlFor="post-type">I want to...</Label>
+                            <Label htmlFor="post-type">I want to... *</Label>
                             <Select name="post-type" required disabled={loading}>
                                 <SelectTrigger id="post-type">
                                     <SelectValue placeholder="Select if you need something or offering something" />
@@ -124,13 +124,13 @@ export default function PostNeedPage() {
 
                         {/* Title */}
                         <div className="space-y-2">
-                            <Label htmlFor="title">Title</Label>
+                            <Label htmlFor="title">Title *</Label>
                             <Input id="title" name="title" placeholder="E.g., Need Electrician, Offering Homemade Snacks" required disabled={loading}/>
                         </div>
 
                          {/* Category */}
                         <div className="space-y-2">
-                            <Label htmlFor="category">Category</Label>
+                            <Label htmlFor="category">Category *</Label>
                             <Select name="category" required disabled={loading}>
                                 <SelectTrigger id="category">
                                     <SelectValue placeholder="Select a category" />
@@ -145,28 +145,28 @@ export default function PostNeedPage() {
 
                          {/* Description */}
                         <div className="space-y-2">
-                            <Label htmlFor="description">Description</Label>
+                            <Label htmlFor="description">Description *</Label>
                             <Textarea id="description" name="description" placeholder="Provide more details about your need or offer..." required disabled={loading}/>
                         </div>
 
                         {/* Location */}
                          <div className="space-y-2">
-                            <Label htmlFor="location">Location</Label>
+                            <Label htmlFor="location">Location *</Label>
                             <Input id="location" name="location" placeholder="E.g., Your City, State or 'Remote'" required disabled={loading}/>
                              <p className="text-xs text-muted-foreground">Be specific if location matters, or type 'Remote' if it doesn't.</p>
                         </div>
 
                         {/* Budget */}
                         <div className="space-y-2">
-                            <Label htmlFor="budget">Budget / Price (Optional)</Label>
-                            <Input id="budget" name="budget" placeholder="E.g., ₹500, Negotiable, Free, Daily Wage" disabled={loading}/>
+                            <Label htmlFor="budget">Budget / Price *</Label>
+                            <Input id="budget" name="budget" placeholder="E.g., ₹500, Negotiable, Free, Daily Wage" required disabled={loading}/>
                              <p className="text-xs text-muted-foreground">Enter an amount, range, or terms like 'Negotiable'.</p>
                         </div>
 
                          {/* Urgency */}
                         <div className="space-y-2">
-                            <Label htmlFor="urgency">Urgency</Label>
-                            <Select name="urgency" disabled={loading}>
+                            <Label htmlFor="urgency">Urgency *</Label>
+                            <Select name="urgency" required disabled={loading}>
                                 <SelectTrigger id="urgency">
                                     <SelectValue placeholder="Select urgency level" />
                                 </SelectTrigger>
@@ -180,8 +180,7 @@ export default function PostNeedPage() {
 
                         {/* Image Upload */}
                         <div className="space-y-2">
-                            <Label htmlFor="image">Upload Image(s)</Label> {/* Changed label text */}
-                            {/* TODO: Implement actual image upload handling and validation */}
+                            <Label htmlFor="image">Upload Image(s) *</Label> {/* Changed label text */}
                             <Input
                                 id="image"
                                 name="image" // Keep the name consistent, backend needs to handle multiple files under this name
@@ -216,4 +215,3 @@ export default function PostNeedPage() {
         </div>
     );
 }
-
