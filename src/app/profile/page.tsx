@@ -12,7 +12,7 @@ import { Edit, UserCheck, List, Heart, MessageSquare, Settings, ChevronRight } f
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
-import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
+import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth, firestore instance, and helper
 import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
 import { format } from 'date-fns'; // For formatting date
 import { useRouter } from 'next/navigation'; // Import router
@@ -42,6 +42,25 @@ export default function ProfilePage() {
     // Handle potential null auth state safely
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
     const router = useRouter(); // Initialize router
+    const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+
+     // Check Firestore initialization status
+     useEffect(() => {
+         if (firestore) {
+             setFirestoreInitialized(true);
+         } else {
+             const timeoutId = setTimeout(() => {
+                 if (firestore) {
+                     setFirestoreInitialized(true);
+                 } else {
+                     console.error("Firestore still not initialized after delay for profile.");
+                     toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+                     setIsLoading(false);
+                 }
+             }, 2000);
+             return () => clearTimeout(timeoutId);
+         }
+     }, [toast]);
 
      useEffect(() => {
         const loadProfile = async () => {
@@ -53,10 +72,11 @@ export default function ProfilePage() {
                  router.push('/login'); // Redirect on auth error
                  return;
             }
-            if (!authLoading && user && firestore) {
+            if (!authLoading && user && firestoreInitialized) { // Check firestoreInitialized
                 try {
+                    const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
                     console.log("Fetching profile for UID:", user.uid);
-                    const userRef = doc(firestore, "users", user.uid);
+                    const userRef = doc(fs, "users", user.uid);
                     const docSnap = await getDoc(userRef);
 
                     if (docSnap.exists()) {
@@ -93,9 +113,16 @@ export default function ProfilePage() {
                          router.push('/complete-profile'); // Redirect if profile document doesn't exist
                          return; // Stop further execution
                     }
-                } catch (error) {
+                } catch (error: any) {
                     console.error("Failed to load profile from Firestore:", error);
-                    toast({ title: "Error", description: "Could not load profile data.", variant: "destructive"});
+                    if (error.message.includes("Firestore is not initialized")) {
+                        toast({ title: "Database Error", description: "Could not load profile.", variant: "destructive" });
+                    } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+                        toast({ title: "Offline", description: "Could not load profile. Displaying cached data if available.", variant: "default" });
+                         // Optionally: try to load from cache or show a specific offline view
+                    } else {
+                       toast({ title: "Error", description: "Could not load profile data.", variant: "destructive"});
+                    }
                     setUserProfile(null); // Clear profile on error
                 } finally {
                     setIsLoading(false);
@@ -105,21 +132,21 @@ export default function ProfilePage() {
                  toast({ title: "Not Logged In", description: "Please log in to view your profile.", variant: "default"});
                  router.push('/login'); // Redirect to login page
             }
-            // Keep loading if auth is still loading
-             if (authLoading) {
+            // Keep loading if auth is still loading or firestore not ready
+             if (authLoading || !firestoreInitialized) {
                  setIsLoading(true);
              }
 
         };
         loadProfile();
-    }, [user, authLoading, authError, toast, router]); // Add router to dependency array
+    }, [user, authLoading, authError, toast, router, firestoreInitialized]); // Add firestoreInitialized to dependency array
 
     // Handle profile editing navigation
     const handleEditProfile = () => {
          router.push('/complete-profile');
     };
 
-     if (isLoading || authLoading) {
+     if (isLoading || authLoading || !firestoreInitialized) { // Check firestoreInitialized
         return (
              <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />

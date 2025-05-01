@@ -17,15 +17,16 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+   FormDescription, // Import FormDescription
 } from '@/components/ui/form';
 import { useState, useEffect } from 'react';
-import { auth, firestore } from '@/lib/firebase/clientApp';
+import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import Firestore helper
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/loading-spinner';
-import { doc, getDoc, updateDoc } from "firebase/firestore"; // Import Firestore functions
-import { updateEmail } from "firebase/auth"; // Import updateEmail
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore"; // Import Firestore functions
+import { updateProfile, updateEmail } from "firebase/auth"; // Import updateEmail and updateProfile
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -43,6 +44,25 @@ export default function CompleteProfilePage() {
   const [loading, setLoading] = useState(false);
   const [user, authLoading, authError] = useAuthState(auth);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+   const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+
+    // Check Firestore initialization status
+     useEffect(() => {
+         if (firestore) {
+             setFirestoreInitialized(true);
+         } else {
+             const timeoutId = setTimeout(() => {
+                 if (firestore) {
+                     setFirestoreInitialized(true);
+                 } else {
+                     console.error("Firestore still not initialized after delay for complete profile.");
+                     toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+                     setLoading(false); // Ensure loading stops if DB fails
+                 }
+             }, 2000);
+             return () => clearTimeout(timeoutId);
+         }
+     }, [toast]);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -59,11 +79,13 @@ export default function CompleteProfilePage() {
   // Fetch existing basic profile data to pre-fill the form
   useEffect(() => {
     const fetchInitialData = async () => {
-      if (user && !initialDataLoaded) {
+      if (user && !initialDataLoaded && firestoreInitialized) { // Check firestoreInitialized
         setLoading(true);
         try {
-          const userDocRef = doc(firestore, "users", user.uid);
+           const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
+          const userDocRef = doc(fs, "users", user.uid);
           const docSnap = await getDoc(userDocRef);
+
           if (docSnap.exists()) {
             const data = docSnap.data();
             // Pre-fill form with existing data
@@ -75,11 +97,27 @@ export default function CompleteProfilePage() {
               age: data.age || null,
               bio: data.bio || '',
             });
+          } else {
+             // If doc doesn't exist, pre-fill with auth data if available
+             const nameParts = user.displayName?.split(' ') || ['', ''];
+              form.reset({
+                  firstName: nameParts[0] || '',
+                  lastName: nameParts.slice(1).join(' ') || '',
+                  email: user.email || '',
+                  age: null, // No age in auth
+                  bio: '', // No bio in auth
+             });
           }
            setInitialDataLoaded(true);
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error fetching profile data:", error);
-          toast({ title: "Error", description: "Could not load profile data.", variant: "destructive" });
+           if (error.message.includes("Firestore is not initialized")) {
+               toast({ title: "Database Error", description: "Could not load profile data.", variant: "destructive" });
+           } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+               toast({ title: "Offline", description: "Could not load profile. Please check connection.", variant: "default" });
+           } else {
+               toast({ title: "Error", description: "Could not load profile data.", variant: "destructive" });
+           }
         } finally {
           setLoading(false);
         }
@@ -91,48 +129,70 @@ export default function CompleteProfilePage() {
             // Redirect if user is not logged in
             toast({ title: "Access Denied", description: "Please log in to complete your profile.", variant: "destructive"});
             router.push('/login');
-        } else {
+        } else if (firestoreInitialized) { // Only fetch if firestore is ready
             fetchInitialData();
         }
     }
-  }, [user, authLoading, router, toast, form, initialDataLoaded]);
+     // Handle Auth Error
+     if (authError) {
+         console.error("Authentication Error:", authError);
+         toast({ title: "Authentication Error", description: authError.message || "Could not verify user.", variant: "destructive"});
+         router.push('/login');
+     }
+  }, [user, authLoading, router, toast, form, initialDataLoaded, firestoreInitialized, authError]); // Add dependencies
 
 
   const handleProfileUpdate = async (values: ProfileFormValues) => {
-    if (!user || !firestore) {
-      toast({ title: "Error", description: "User or database service not available.", variant: "destructive" });
+    if (!user) {
+      toast({ title: "Error", description: "User not available.", variant: "destructive" });
       return;
     }
     setLoading(true);
 
     try {
-      const userDocRef = doc(firestore, "users", user.uid);
+        const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
+      const userDocRef = doc(fs, "users", user.uid);
       const newName = `${values.firstName} ${values.lastName}`;
 
-      // Update Firestore document
-      await updateDoc(userDocRef, {
-        name: newName,
-        email: values.email || null, // Store null if empty
-        age: values.age || null, // Store null if empty
-        bio: values.bio || null, // Store null if empty
-        isProfileComplete: true // Mark profile as complete
-      });
+      // Data to save/update in Firestore
+      const profileDataToSave = {
+            uid: user.uid, // Ensure UID is set
+            name: newName,
+            email: values.email || null, // Store null if empty
+            age: values.age || null, // Store null if empty
+            bio: values.bio || null, // Store null if empty
+            isProfileComplete: true, // Mark profile as complete
+            // Add createdAt on initial creation, merge otherwise
+            // createdAt: serverTimestamp() // Use serverTimestamp for creation ideally
+      };
+
+       // Check if document exists to decide between set with merge or update
+       const docSnap = await getDoc(userDocRef);
+       if (docSnap.exists()) {
+           await updateDoc(userDocRef, profileDataToSave); // Update existing doc
+           console.log("Firestore profile updated.");
+       } else {
+           // Add createdAt if creating for the first time
+           await setDoc(userDocRef, { ...profileDataToSave, createdAt: new Date() }); // Set new doc
+           console.log("Firestore profile created.");
+       }
+
 
        // Update Auth display name if it differs
       if (user.displayName !== newName) {
           await updateProfile(user, { displayName: newName });
+          console.log("Firebase Auth display name updated.");
       }
 
        // Update Auth email if provided and differs (requires recent login or re-authentication)
-       // This might throw an error if the user hasn't logged in recently.
-       // Consider adding re-authentication logic if email update is critical.
       if (values.email && user.email !== values.email) {
            try {
                await updateEmail(user, values.email);
-               console.log("User email updated in Auth.");
+               console.log("Firebase Auth email updated.");
            } catch (authError: any) {
-               console.warn("Could not update email in Auth:", authError);
-               toast({ title: "Email Update", description: "Could not update email directly. You might need to re-authenticate.", variant: "default"});
+               console.warn("Could not update email in Firebase Auth:", authError);
+               // Inform user about potential re-authentication need
+               toast({ title: "Email Update Notice", description: "Could not update email directly in authentication. You might need to re-authenticate for the change to fully apply.", variant: "default", duration: 5000});
            }
       }
 
@@ -141,17 +201,28 @@ export default function CompleteProfilePage() {
       router.push('/'); // Redirect to home page after completion
     } catch (error: any) {
       console.error('Profile update error:', error);
-      toast({
-        title: 'Update Failed',
-        description: error.message || 'Could not update profile.',
-        variant: 'destructive',
-      });
+       if (error.message.includes("Firestore is not initialized")) {
+           toast({ title: "Database Error", description: "Could not save profile.", variant: "destructive" });
+       } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+            toast({ title: "Offline", description: "Could not save profile. Please check connection.", variant: "destructive" });
+       } else if (error.code?.startsWith('auth/')) {
+           // Handle specific Firebase Auth errors during email/profile update if needed
+           toast({ title: 'Authentication Issue', description: `Could not update auth profile: ${error.message}`, variant: 'destructive' });
+       }
+       else {
+            toast({
+                title: 'Update Failed',
+                description: error.message || 'Could not update profile.',
+                variant: 'destructive',
+            });
+        }
     } finally {
       setLoading(false);
     }
   };
 
-   if (authLoading || (user && !initialDataLoaded)) {
+   // Show loading if auth is loading, or if user exists but initial data/firestore isn't ready
+   if (authLoading || (user && (!initialDataLoaded || !firestoreInitialized))) {
      return (
          <div className="flex justify-center items-center min-h-[60vh]">
              <LoadingSpinner />
@@ -232,6 +303,9 @@ export default function CompleteProfilePage() {
                             {/* Treat empty input as null */}
                             <Input type="number" placeholder="Your age" {...field} onChange={e => field.onChange(e.target.value === '' ? null : +e.target.value)} value={field.value ?? ''} disabled={loading} />
                           </FormControl>
+                           <FormDescription>
+                             Must be a positive number.
+                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -244,8 +318,11 @@ export default function CompleteProfilePage() {
                         <FormItem>
                           <FormLabel>About Me (Optional)</FormLabel>
                           <FormControl>
-                             <Textarea placeholder="Tell the community a little about yourself..." {...field} rows={4} disabled={loading}/>
+                             <Textarea placeholder="Tell the community a little about yourself (max 500 characters)..." {...field} rows={4} disabled={loading}/>
                           </FormControl>
+                           <FormDescription>
+                             Keep it brief and relevant.
+                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}

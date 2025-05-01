@@ -1,5 +1,4 @@
 
-
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect } from 'react';
@@ -12,7 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
+import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth and firestore instance, and helper
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 
@@ -42,6 +41,27 @@ export default function Home() {
   const [userFavorites, setUserFavorites] = useState<string[]>([]); // State for user's favorite IDs
   const { toast } = useToast();
   const searchParams = useSearchParams(); // Use hook for search params
+  const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+
+  // Check Firestore initialization status
+  useEffect(() => {
+    if (firestore) {
+      setFirestoreInitialized(true);
+    } else {
+      // Attempt to re-check after a delay if it wasn't ready initially
+      const timeoutId = setTimeout(() => {
+        if (firestore) {
+          setFirestoreInitialized(true);
+        } else {
+          console.error("Firestore still not initialized after delay.");
+          toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+          setIsLoading(false); // Stop loading indicator if DB fails
+        }
+      }, 2000); // 2-second delay
+      return () => clearTimeout(timeoutId);
+    }
+  }, [toast]);
+
 
   // Fetch postings data and user favorites from Firestore in useEffect
   useEffect(() => {
@@ -55,16 +75,12 @@ export default function Home() {
 
     const fetchData = async () => {
         setIsLoading(true);
-        if (!firestore) {
-            console.error("Firestore not initialized");
-            toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
-            setIsLoading(false);
-            return;
-        }
-
+        // Use the helper to ensure firestore is ready
         try {
+            const fs = ensureFirestoreInitialized(); // This will throw if firestore is null
+
             // Fetch Postings
-            const postingsRef = collection(firestore, 'postings'); // Adjust collection name
+            const postingsRef = collection(fs, 'postings'); // Adjust collection name
             const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20)); // Example query
             const postingsSnapshot = await getDocs(q);
             const fetchedPostings = postingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -72,7 +88,7 @@ export default function Home() {
             // Fetch User Favorites (only if user is logged in)
             let favs: string[] = [];
             if (user) {
-                const userDocRef = doc(firestore, 'users', user.uid);
+                const userDocRef = doc(fs, 'users', user.uid);
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     favs = userDocSnap.data().favorites || [];
@@ -89,20 +105,31 @@ export default function Home() {
             setCurrentPostings(postingsWithFavorites);
             console.log("Fetched postings and favorites (if applicable)");
 
-        } catch (error) {
+        } catch (error: any) {
+            // Handle errors from ensureFirestoreInitialized or Firestore operations
             console.error("Error fetching data:", error);
-            toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
+             if (error.message.includes("Firestore is not initialized")) {
+                 // Specific message if initialization failed
+                  toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+             } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+                 // Handle offline error specifically if persistence is enabled
+                 toast({ title: "Offline", description: "Could not reach the server. Displaying cached data if available.", variant: "default" });
+                 // Attempt to read from cache (Firestore does this automatically if persistence is enabled)
+             }
+             else {
+                 toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
+             }
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Fetch data only when auth state is resolved and firestore is available
-     if (!authLoading) {
+    // Fetch data only when auth state is resolved and firestore is confirmed initialized
+     if (!authLoading && firestoreInitialized) {
          fetchData();
      }
 
-  }, [toast, authLoading, user, searchParams]); // Add user to dependencies
+  }, [toast, authLoading, user, searchParams, firestoreInitialized]); // Add user and firestoreInitialized to dependencies
 
 
   // Handle favoriting logic (Server Action updating Firestore)
@@ -111,31 +138,28 @@ export default function Home() {
         toast({ title: "Login Required", description: "Please log in to add favorites.", variant: "destructive" });
         return;
     }
-    if (!firestore) {
-         toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
-         return;
-    }
+     try {
+         const fs = ensureFirestoreInitialized(); // Ensure Firestore is ready
 
-    const isCurrentlyFavorite = userFavorites.includes(postId);
+        const isCurrentlyFavorite = userFavorites.includes(postId);
 
-    // Optimistically update UI
-    setCurrentPostings(prevPostings =>
-      prevPostings.map(p =>
-        p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
-      )
-    );
-    setUserFavorites(prevFavs =>
-        isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
-    );
+        // Optimistically update UI
+        setCurrentPostings(prevPostings =>
+          prevPostings.map(p =>
+            p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
+          )
+        );
+        setUserFavorites(prevFavs =>
+            isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
+        );
 
-    console.log(`Toggling favorite for post ${postId}. New state: ${!isCurrentlyFavorite}`);
-    toast({
-      description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
-    });
+        console.log(`Toggling favorite for post ${postId}. New state: ${!isCurrentlyFavorite}`);
+        toast({
+          description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
+        });
 
-    try {
         // Update user's favorites array in Firestore
-        const userDocRef = doc(firestore, 'users', user.uid);
+        const userDocRef = doc(fs, 'users', user.uid);
         if (isCurrentlyFavorite) {
             await updateDoc(userDocRef, { favorites: arrayRemove(postId) });
         } else {
@@ -143,10 +167,18 @@ export default function Home() {
             await updateDoc(userDocRef, { favorites: arrayUnion(postId) }, { merge: true });
         }
         console.log("Firestore favorite status updated");
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating favorites:", error);
-        toast({ title: "Error", description: "Could not update favorites.", variant: "destructive" });
+         if (error.message.includes("Firestore is not initialized")) {
+             toast({ title: "Database Error", description: "Could not update favorites.", variant: "destructive" });
+         } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+             toast({ title: "Offline", description: "Could not update favorites. Please check your connection.", variant: "destructive" });
+         }
+         else {
+            toast({ title: "Error", description: "Could not update favorites.", variant: "destructive" });
+        }
         // Revert optimistic UI update on error
+         const isCurrentlyFavorite = userFavorites.includes(postId); // Check original state before optimistic update attempt
         setCurrentPostings(prevPostings =>
           prevPostings.map(p =>
             p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p
@@ -154,7 +186,7 @@ export default function Home() {
         );
          setUserFavorites(prevFavs =>
             isCurrentlyFavorite ? [...prevFavs, postId] : prevFavs.filter(id => id !== postId)
-        );
+         );
     }
   };
 
@@ -167,8 +199,8 @@ export default function Home() {
     }
   }, [authError, toast]);
 
-  // Show LoadingSpinner if either auth state or data fetching is in progress initially
-  if (isLoading || authLoading) {
+  // Show LoadingSpinner if either auth state or data fetching is in progress initially, or if firestore isn't initialized yet
+  if (isLoading || authLoading || !firestoreInitialized) {
        return (
             <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -220,12 +252,15 @@ export default function Home() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12">
             {currentPostings.map((post) => {
               const CategoryIcon = getCategoryIcon(post.category);
+              const createdAtDate = post.createdAt?.toDate ? post.createdAt.toDate() : null; // Convert Timestamp to Date if available
+              const formattedDate = createdAtDate ? createdAtDate.toLocaleDateString() : 'N/A'; // Format the date
+
               return (
               <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card">
                  <div className="relative w-full aspect-[3/2]">
                      <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
                         <Image
-                            src={post.image || 'https://picsum.photos/300/200'}
+                            src={post.imageUrls?.[0] || 'https://picsum.photos/300/200'} // Use first image or default
                             alt={post.title || 'Posting image'}
                             fill
                             style={{ objectFit: 'cover' }}
@@ -250,11 +285,11 @@ export default function Home() {
                   <CardHeader className="p-0 pb-3">
                     <div className="flex justify-between items-start gap-2">
                        <CardTitle className="text-lg leading-tight line-clamp-2">{post.title || 'Untitled Post'}</CardTitle>
-                       <Badge variant={post.type === 'Need' ? 'destructive' : 'default'} className="shrink-0">
-                         {post.type}
+                       <Badge variant={post.postType === 'need' ? 'destructive' : 'default'} className="shrink-0 capitalize">
+                         {post.postType}
                        </Badge>
                     </div>
-                    <CardDescription className="flex items-center gap-1 text-xs pt-1">
+                    <CardDescription className="flex items-center gap-1 text-xs pt-1 capitalize">
                        <CategoryIcon /> {post.category || 'Uncategorized'}
                     </CardDescription>
                   </CardHeader>
@@ -265,12 +300,16 @@ export default function Home() {
                      <div className="flex items-center gap-1.5 w-full pt-3 px-4">
                         <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location || 'N/A'}</span>
                      </div>
-                     <div className="flex items-center gap-1.5 w-full px-4">
+                     <div className="flex items-center gap-1.5 w-full px-4 capitalize">
                         <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency || 'N/A'}
                      </div>
-                     <div className="flex items-center gap-1.5 w-full font-semibold pb-3 px-4">
+                     <div className="flex items-center gap-1.5 w-full font-semibold px-4">
                         <IndianRupee className="h-3.5 w-3.5" /> {post.budget || 'N/A'}
                      </div>
+                      <div className="flex items-center gap-1.5 w-full text-muted-foreground pb-3 px-4">
+                         {/* Display formatted date */}
+                         <Clock className="h-3.5 w-3.5" /> Posted: {formattedDate}
+                      </div>
                   </CardFooter>
                 </Link>
               </Card>

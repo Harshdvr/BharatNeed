@@ -11,45 +11,81 @@ import Image from "next/image";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
-import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
+import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth, firestore, and helper
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'; // Import Firestore functions
 
-// TODO: Remove initialMyPostings and fetch actual data for the logged-in user
-const initialMyPostings: any[] = [
- // Example Structure (replace with fetched data)
- // { id: '...', status: 'active' | 'pending' | 'inactive', title: '...', category: '...', location: '...', budget: '...', description: '...', image: '...', views: 0, datePosted: '...' },
-];
+// TODO: Define a proper type for postings
+interface Posting {
+    id: string;
+    status?: 'active' | 'pending' | 'inactive';
+    title?: string;
+    category?: string;
+    location?: string;
+    budget?: string;
+    description?: string;
+    imageUrls?: string[]; // Assuming multiple images
+    views?: number;
+    datePosted?: any; // Firestore Timestamp or Date
+    userId?: string; // Added userId field
+    createdAt?: any; // Firestore Timestamp
+}
 
 export default function MyAdsPage() {
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-    const [myPostings, setMyPostings] = useState<any[]>([]); // State for user's postings
+    const [myPostings, setMyPostings] = useState<Posting[]>([]); // State for user's postings
     const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
-    const [loadingDeleteId, setLoadingDeleteId] = useState<string | number | null>(null); // State for delete loading
+    const [loadingDeleteId, setLoadingDeleteId] = useState<string | null>(null); // State for delete loading
     const { toast } = useToast();
+     const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+
+    // Check Firestore initialization status
+     useEffect(() => {
+         if (firestore) {
+             setFirestoreInitialized(true);
+         } else {
+             const timeoutId = setTimeout(() => {
+                 if (firestore) {
+                     setFirestoreInitialized(true);
+                 } else {
+                     console.error("Firestore still not initialized after delay for my ads.");
+                     toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+                     setIsLoadingInitialData(false);
+                 }
+             }, 2000);
+             return () => clearTimeout(timeoutId);
+         }
+     }, [toast]);
 
     useEffect(() => {
       const fetchMyAds = async () => {
-        if (!user || !firestore) {
+        if (!user) {
           setIsLoadingInitialData(false);
-          return; // Exit if not logged in or firestore not ready
+          return; // Exit if not logged in
         }
         setIsLoadingInitialData(true);
         try {
-          const adsRef = collection(firestore, 'postings'); // Adjust collection name
+          const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
+          const adsRef = collection(fs, 'postings'); // Adjust collection name
           const q = query(adsRef, where('userId', '==', user.uid)); // Assuming 'userId' field exists
           const querySnapshot = await getDocs(q);
-          const userAds = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const userAds = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Posting));
           setMyPostings(userAds);
           console.log("Fetched user ads from Firestore");
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error fetching user ads:", error);
-          toast({ title: "Error", description: "Could not fetch your ads.", variant: "destructive" });
+          if (error.message.includes("Firestore is not initialized")) {
+               toast({ title: "Database Error", description: "Could not fetch your ads.", variant: "destructive" });
+           } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+               toast({ title: "Offline", description: "Could not fetch ads. Displaying cached data if available.", variant: "default" });
+           } else {
+               toast({ title: "Error", description: "Could not fetch your ads.", variant: "destructive" });
+           }
         } finally {
           setIsLoadingInitialData(false);
         }
       };
 
-      if (!authLoading) {
+      if (!authLoading && firestoreInitialized) { // Check firestoreInitialized
         fetchMyAds();
       }
 
@@ -63,35 +99,45 @@ export default function MyAdsPage() {
         });
         setIsLoadingInitialData(false);
       }
-    }, [user, authLoading, toast, authError]);
+    }, [user, authLoading, toast, authError, firestoreInitialized]); // Add firestoreInitialized dependency
 
 
     const activeAds = myPostings.filter(ad => ad.status === 'active');
     const pendingAds = myPostings.filter(ad => ad.status === 'pending');
     const inactiveAds = myPostings.filter(ad => ad.status === 'inactive');
 
-    const handleDelete = async (id: string | number) => {
-        if (!firestore || !user) {
-             toast({ title: "Error", description: "Cannot perform delete action.", variant: "destructive" });
+    const handleDelete = async (id: string) => {
+        if (!user) {
+             toast({ title: "Login Required", description: "Please log in.", variant: "destructive" });
              return;
         }
         setLoadingDeleteId(id); // Start loading for this ad deletion
-        console.log(`Deleting ad ${id}`);
+
         try {
+            const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
             // Call server action or directly delete from Firestore using the ad ID
-            await deleteDoc(doc(firestore, 'postings', id as string));
+            await deleteDoc(doc(fs, 'postings', id));
             console.log(`Deleted ad ${id} from Firestore`);
+
+            // Optimistically update UI
             setMyPostings(prev => prev.filter(ad => ad.id !== id));
             toast({ title: "Ad Deleted", description: "Your ad has been successfully deleted." });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to delete ad:", error);
-            toast({ title: "Error", description: "Could not delete the ad.", variant: "destructive" });
+             if (error.message.includes("Firestore is not initialized")) {
+                 toast({ title: "Database Error", description: "Could not delete the ad.", variant: "destructive" });
+             } else if (error.code === 'unavailable' || error.message.includes('offline')) {
+                  toast({ title: "Offline", description: "Could not delete ad. Please check connection.", variant: "destructive" });
+             } else {
+                toast({ title: "Error", description: "Could not delete the ad.", variant: "destructive" });
+            }
+             // No UI revert needed here, deletion failed
         } finally {
             setLoadingDeleteId(null); // Stop loading
         }
     };
 
-    if (isLoadingInitialData || authLoading) {
+    if (isLoadingInitialData || authLoading || !firestoreInitialized) { // Check firestoreInitialized
         return (
              <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -164,13 +210,13 @@ export default function MyAdsPage() {
 
 // Reusable Ad Card Component for My Ads page
 function AdCard({ ad, onDelete, loadingDeleteId }: {
-    ad: any, // Use a specific type based on your data structure
-    onDelete: (id: string | number) => void,
-    loadingDeleteId: string | number | null
+    ad: Posting, // Use the specific type
+    onDelete: (id: string) => void,
+    loadingDeleteId: string | null
 }) {
     const isDeleting = loadingDeleteId === ad.id;
     // Format date if available
-    const datePostedFormatted = ad.datePosted?.toDate ? ad.datePosted.toDate().toLocaleDateString() : 'N/A'; // Adjust formatting
+    const datePostedFormatted = ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A'; // Adjust formatting
 
 
     return (
@@ -183,7 +229,7 @@ function AdCard({ ad, onDelete, loadingDeleteId }: {
             )}
             <Link href={`/postings/${ad.id}`} className="flex-shrink-0 w-full sm:w-48 h-40 sm:h-auto relative bg-muted block">
                  <Image
-                    src={ad.image || 'https://picsum.photos/300/200'} // Use ad image or default
+                    src={ad.imageUrls?.[0] || 'https://picsum.photos/300/200'} // Use first ad image or default
                     alt={ad.title || 'Ad image'}
                     fill
                     style={{ objectFit: 'cover' }}
