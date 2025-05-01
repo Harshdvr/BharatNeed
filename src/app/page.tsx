@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
-import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react'; // Removed unused icons
+import { Plus, PlusCircle, Search as SearchIcon, MessageSquare, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react';
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from '@/hooks/use-toast';
@@ -14,74 +14,123 @@ import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clie
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import CategorySelector from '@/components/category-selector'; // Import the new component
+import { cn } from '@/lib/utils';
 
 
-// Mock Data for testing
+// Mock Data for testing - Updated to better match reference image content
 const mockPostings = [
   {
     id: 'mock1',
-    title: 'Mock Need: Urgent Plumbing Help',
-    description: 'Need a plumber urgently for a leaky kitchen sink. Available anytime today.',
+    title: 'Urgent Plumber Needed for Kitchen Sink Leak',
+    description: 'My kitchen sink pipe burst this morning. Need a plumber immediately in Koramangala, Bangalore. Please quote.',
     category: 'services',
     postType: 'need',
-    location: 'Mumbai, MH',
-    budget: 'Negotiable',
+    location: 'Koramangala, Bangalore',
+    budget: 'Budget: ₹2,000', // Changed format to match image
     urgency: 'urgent',
-    imageUrls: ['https://picsum.photos/seed/plumber/300/200'],
-    createdAt: new Date(),
-    isFavorite: false, // Initial state
+    imageUrls: ['https://picsum.photos/seed/plumberleak/300/200'],
+    createdAt: new Date(Date.now() - 3600000), // 1 hour ago
+    isFavorite: false,
+    featured: true, // Added featured flag
   },
   {
     id: 'mock2',
-    title: 'Mock Offer: Homemade Mango Pickles',
-    description: 'Selling delicious homemade mango pickles, prepared with traditional recipes. Order now!',
-    category: 'buy/sell',
+    title: 'Authentic Punjabi Tiffin Service - Daily Delivery',
+    description: 'Home-cooked Punjabi meals (Veg/Non-Veg options) delivered daily across South Delhi. Hygienic & Tasty. Monthly plans available.',
+    category: 'services', // Or maybe Buy/Sell? Using Services based on description
     postType: 'offer',
-    location: 'Pune, MH',
-    budget: '₹150/kg',
+    location: 'South Delhi, Delhi',
+    budget: '₹130', // Changed format
     urgency: 'low',
-    imageUrls: ['https://picsum.photos/seed/pickles/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+    imageUrls: ['https://picsum.photos/seed/tiffin/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 4), // 4 days ago
     isFavorite: false,
+    featured: true,
   },
   {
     id: 'mock3',
-    title: 'Mock Need: Farm Laborers for Harvest',
-    description: 'Looking for 5-6 laborers for rice harvesting for 3 days next week. Daily wage provided.',
-    category: 'farming',
-    postType: 'need',
-    location: 'Rural Village, UP',
-    budget: 'Daily Wage',
-    urgency: 'high',
-    imageUrls: ['https://picsum.photos/seed/harvest/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 5), // 5 days ago
+    title: 'Handcrafted Terracotta Pots & Planters',
+    description: 'Beautiful, eco-friendly terracotta pots in various sizes and designs. Perfect for home gardens and balconies. Made by local artisans.',
+    category: 'buy/sell',
+    postType: 'offer',
+    location: 'Jaipur, Rajasthan',
+    budget: '₹250', // Changed format
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/terracotta/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
     isFavorite: false,
+    featured: true,
   },
     {
     id: 'mock4',
-    title: 'Mock Offer: Maths Tuition Class 10',
-    description: 'Experienced teacher offering online Maths tuition for CBSE Class 10 students.',
-    category: 'tuitions',
+    title: 'Fresh Organic Mangoes - Direct from Farm (Ratnagiri)',
+    description: 'Order delicious, naturally ripened Alphonso mangoes directly from our farm in Ratnagiri. Minimum order 1 dozen.',
+    category: 'farming', // Or Buy/Sell
     postType: 'offer',
-    location: 'Delhi',
-    budget: '₹2000/month',
-    urgency: 'medium',
-    imageUrls: ['https://picsum.photos/seed/tuition/300/200'],
+    location: 'Ratnagiri, Maharashtra',
+    budget: '₹1,500', // Changed format (per dozen implied)
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/mangoes/300/200'],
     createdAt: new Date(Date.now() - 86400000), // 1 day ago
     isFavorite: false,
+    featured: true,
   },
-  {
+   // Add mock data for Recently Viewed - can duplicate or add new ones
+   {
     id: 'mock5',
-    title: 'Mock Need: Part-time Graphic Designer',
-    description: 'Looking for a designer for social media posts, 10-15 hours/week.',
-    category: 'jobs',
-    postType: 'need',
-    location: 'Remote',
-    budget: '₹15k/month',
-    urgency: 'medium',
-    imageUrls: ['https://picsum.photos/seed/designer/300/200'],
+    title: 'Gently Used Mountain Bike (MTB) for Sale',
+    description: 'Selling my Firefox MTB, 1 year old. Serviced regularly. Good condition, minor scratches. Selling as I upgraded.',
+    category: 'buy/sell',
+    postType: 'offer',
+    location: 'Mumbai, Maharashtra',
+    budget: '₹8,500',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/mtbbike/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
     isFavorite: false,
+    recentlyViewed: true, // Flag for this section
+  },
+   {
+    id: 'mock6',
+    title: 'Looking for Used Washing Machine In Good Condition',
+    description: 'Need a functional, used top-load washing machine (6-7kg capacity) in Chennai. Budget around ₹5000-₹7000.',
+    category: 'buy/sell',
+    postType: 'need',
+    location: 'Chennai, Tamil Nadu',
+    budget: 'Budget: ₹7,000',
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/washingmachine/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+    isFavorite: false,
+     recentlyViewed: true,
+  },
+   {
+    id: 'mock7',
+    title: 'Farm Labour Required for Paddy Planting Season',
+    description: 'Need 5-6 experienced farm workers for paddy planting near Ludhiana. Duration 2 weeks. Daily wages + food.',
+    category: 'farming',
+    postType: 'need',
+    location: 'Near Ludhiana, Punjab',
+    budget: 'Budget: ₹600', // Assuming per day
+    urgency: 'high',
+    imageUrls: ['https://picsum.photos/seed/paddyfarm/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 3), // 3 days ago
+    isFavorite: false,
+     recentlyViewed: true,
+  },
+   { // Duplicating tiffin for recently viewed
+    id: 'mock8',
+    title: 'Authentic Punjabi Tiffin Service - Daily Delivery',
+    description: 'Home-cooked Punjabi meals (Veg/Non-Veg options) delivered daily across South Delhi. Hygienic & Tasty. Monthly plans available.',
+    category: 'services',
+    postType: 'offer',
+    location: 'South Delhi, Delhi',
+    budget: '₹130',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/tiffin2/300/200'], // Use different seed for image
+    createdAt: new Date(Date.now() - 86400000 * 4), // 4 days ago
+    isFavorite: false,
+     recentlyViewed: true,
   },
 ];
 
@@ -231,117 +280,82 @@ export default function Home() {
     }
   }, [authError, authLoading, toast]);
 
+  // Filter posts for sections
+  const featuredPostings = currentPostings.filter(post => post.featured && !post.recentlyViewed);
+  const recentlyViewedPostings = currentPostings.filter(post => post.recentlyViewed);
+
 
   return (
     <div className="relative min-h-full">
-      {isLoading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-10" />} {/* Show spinner conditionally */}
+      {isLoading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-10" />}
 
-      {/* Hero Section */}
-      <div className="mb-8 text-center pt-8 pb-4">
-        <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
-          Welcome to Bharat Need
+      {/* Hero Section - Adjusted to match reference */}
+      <div className="text-center py-16 px-4 bg-gradient-to-b from-orange-50 via-white to-white"> {/* Added gradient background */}
+        <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl mb-4">
+          Find What You Need,<br/> Offer What You Have.
         </h1>
-        <p className="mt-2 text-lg text-muted-foreground max-w-2xl mx-auto">
-          Connecting needs and offers across India. Post what you need, offer what you have.
+        <p className="mt-2 text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
+           BharatNeed connects your local community across India - from bustling cities to remote villages - for everything you need or offer.
         </p>
-         <Button
-            variant="default"
-            size="lg"
-            className="mt-6 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md rounded-full px-6 py-3"
-            asChild
-          >
-            <Link href="/post-need">
-              <PlusCircle className="mr-2 h-5 w-5" />
-              Post Your Need or Offer
-            </Link>
-          </Button>
+         <div className="flex justify-center gap-4">
+             <Button
+                variant="default"
+                size="lg"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md rounded-md px-8 py-3" // Changed to rounded-md
+                asChild
+              >
+                <Link href="/post-need">
+                  Post Your Need/Offer
+                </Link>
+              </Button>
+              <Button
+                  variant="outline"
+                  size="lg"
+                  className="shadow-sm rounded-md px-8 py-3"
+                  asChild // Make button act like a link
+              >
+                  <Link href="/"> {/* Link to browse page (assuming home for now) */}
+                    Browse Listings →
+                  </Link>
+              </Button>
+         </div>
       </div>
 
-      {/* Category Selector Component */}
-      <CategorySelector
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-      />
+      {/* Explore Categories Section */}
+       <div className="py-12 px-4">
+         <h2 className="text-2xl font-semibold text-center mb-8">Explore Categories</h2>
+          <CategorySelector
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+          />
+       </div>
 
 
-      {/* Postings Grid */}
-      {currentPostings.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12 mt-8"> {/* Added margin-top */}
-            {currentPostings.map((post) => {
-              // Find icon based on category name - assuming category names match keys in CategorySelector
-              const CategoryIcon = CategorySelector.categoryDetails.find(c => c.name.toLowerCase() === post.category?.toLowerCase())?.icon || Tag;
-              const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
-              const formattedDate = createdAtDate ? createdAtDate.toLocaleDateString() : 'N/A';
+       {/* Featured Needs & Offers Section */}
+       {featuredPostings.length > 0 && (
+           <div className="py-12 px-4 bg-muted/30"> {/* Light background for section */}
+             <h2 className="text-2xl font-semibold mb-6">Featured Needs & Offers</h2>
+             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {featuredPostings.slice(0, 4).map((post) => ( // Limit to 4 featured posts
+                    <PostCard key={post.id} post={post} user={user} handleToggleFavorite={handleToggleFavorite} />
+                ))}
+             </div>
+           </div>
+       )}
 
-              return (
-              <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card">
-                 <div className="relative w-full aspect-[3/2]">
-                     <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
-                        <Image
-                            src={post.imageUrls?.[0] || 'https://picsum.photos/300/200'} // Use first image or default
-                            alt={post.title || 'Posting image'}
-                            fill
-                            style={{ objectFit: 'cover' }}
-                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
-                            data-ai-hint="product service picture" /* Added AI hint */
-                            priority={post.id.startsWith('mock')} // Prioritize loading mock images
-                        />
-                     </Link>
-                    {/* Favorite Button Overlay */}
-                    {user && ( // Only show if user is logged in
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
-                            onClick={() => handleToggleFavorite(post.id)}
-                            aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                            >
-                            <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
-                         </Button>
-                    )}
-                </div>
-                <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4">
-                  <CardHeader className="p-0 pb-3">
-                    <div className="flex justify-between items-start gap-2">
-                       <CardTitle className="text-lg leading-tight line-clamp-2">{post.title || 'Untitled Post'}</CardTitle>
-                       <Badge variant={post.postType === 'need' ? 'destructive' : 'default'} className="shrink-0 capitalize">
-                         {post.postType}
-                       </Badge>
-                    </div>
-                    <CardDescription className="flex items-center gap-1 text-xs pt-1 capitalize">
-                       <CategoryIcon className="h-4 w-4" /> {post.category || 'Uncategorized'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3">
-                    <p className="line-clamp-3">{post.description || 'No description'}</p>
-                  </CardContent>
-                  <CardFooter className="flex flex-col items-start gap-2 pt-3 text-xs border-t bg-muted/50 p-0 mt-auto">
-                     <div className="flex items-center gap-1.5 w-full pt-3 px-4">
-                        <MapPin className="h-3.5 w-3.5" /> <span className="truncate">{post.location || 'N/A'}</span>
-                     </div>
-                     <div className="flex items-center gap-1.5 w-full px-4 capitalize">
-                        <Clock className="h-3.5 w-3.5" /> Urgency: {post.urgency || 'N/A'}
-                     </div>
-                     <div className="flex items-center gap-1.5 w-full font-semibold px-4">
-                        <IndianRupee className="h-3.5 w-3.5" /> {post.budget || 'N/A'}
-                     </div>
-                      <div className="flex items-center gap-1.5 w-full text-muted-foreground pb-3 px-4">
-                         <Clock className="h-3.5 w-3.5" /> Posted: {formattedDate}
-                      </div>
-                  </CardFooter>
-                </Link>
-              </Card>
-              );
-            })}
-          </div>
-      ) : (
-         <div className="text-center py-10">
-            <p className="text-lg text-muted-foreground">No postings found. Be the first to post!</p>
-            <Button asChild className="mt-4">
-                <Link href="/post-need">Post Need/Offer</Link>
-            </Button>
-         </div>
-      )}
+
+       {/* Recently Viewed Section */}
+       {recentlyViewedPostings.length > 0 && (
+            <div className="py-16 px-4">
+             <h2 className="text-2xl font-semibold mb-6">Recently Viewed</h2>
+             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                 {recentlyViewedPostings.slice(0, 4).map((post) => ( // Limit to 4 recently viewed
+                    <PostCard key={post.id} post={post} user={user} handleToggleFavorite={handleToggleFavorite} isRecentlyViewed={true} />
+                 ))}
+             </div>
+            </div>
+        )}
+
 
         {/* How BharatNeed Works Section */}
         <section className="bg-muted/50 py-16 mt-12">
@@ -350,11 +364,8 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {/* Step 1: Post Easily */}
                     <div className="flex flex-col items-center">
-                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                             {/* Assuming Plus icon is desired */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
+                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4 text-primary-foreground">
+                            <Plus className="h-8 w-8" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">1. Post Easily</h3>
                         <p className="text-muted-foreground">
@@ -363,11 +374,8 @@ export default function Home() {
                     </div>
                     {/* Step 2: Find Locally */}
                     <div className="flex flex-col items-center">
-                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                             {/* Assuming Search icon is desired */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
+                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4 text-primary-foreground">
+                            <SearchIcon className="h-8 w-8" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">2. Find Locally</h3>
                         <p className="text-muted-foreground">
@@ -376,11 +384,8 @@ export default function Home() {
                     </div>
                     {/* Step 3: Connect Directly */}
                     <div className="flex flex-col items-center">
-                         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                             {/* Assuming MessageSquare icon is desired */}
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
+                         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4 text-primary-foreground">
+                            <MessageSquare className="h-8 w-8" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">3. Connect Directly</h3>
                         <p className="text-muted-foreground">
@@ -393,4 +398,94 @@ export default function Home() {
 
     </div>
   );
+}
+
+
+// Reusable Post Card Component
+function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }: {
+    post: any,
+    user: any, // Consider defining a proper user type
+    handleToggleFavorite: (id: string) => void,
+    isRecentlyViewed?: boolean
+}) {
+    const CategoryIcon = CategorySelector.categoryDetails.find(c => c.name.toLowerCase() === post.category?.toLowerCase())?.icon || Tag;
+    const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
+    // Simple date formatting (days ago) - consider using date-fns for more complex formatting
+    let formattedDate = 'N/A';
+    if (createdAtDate) {
+        const diffTime = Math.abs(new Date().getTime() - createdAtDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        formattedDate = diffDays <= 1 ? 'Today' : `${diffDays} days ago`;
+    }
+
+     // Determine badge text and variant based on post type and featured status
+     let badgeText = post.postType === 'need' ? 'Need' : 'Offer';
+     let badgeVariant: "default" | "destructive" | "secondary" | "outline" = post.postType === 'need' ? 'destructive' : 'default';
+     if (post.featured && !isRecentlyViewed) {
+         // Use a different badge style for featured? Example: secondary
+         // Or combine: badgeText = `Featured ${badgeText}`
+         // For now, just stick to Need/Offer
+     }
+
+
+    return (
+        <Card className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card border rounded-lg">
+            <div className="relative w-full aspect-[4/3]"> {/* Adjusted aspect ratio */}
+                <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
+                    <Image
+                        src={post.imageUrls?.[0] || 'https://picsum.photos/400/300'} // Use first image or default
+                        alt={post.title || 'Posting image'}
+                        fill
+                        style={{ objectFit: 'cover' }}
+                        className="rounded-t-lg"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                        data-ai-hint="product service picture"
+                        priority={post.id.startsWith('mock')}
+                    />
+                </Link>
+                 {/* Badges Overlay */}
+                 <div className="absolute top-2 left-2 flex gap-1.5 z-10">
+                    <Badge variant={badgeVariant} className="text-xs py-0.5 px-1.5 rounded-sm">
+                       {badgeText}
+                    </Badge>
+                    {post.featured && !isRecentlyViewed && (
+                        <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm bg-yellow-400 text-yellow-900">
+                            Featured
+                        </Badge>
+                    )}
+                </div>
+                {/* Favorite Button Overlay */}
+                {user && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                        onClick={() => handleToggleFavorite(post.id)}
+                        aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        >
+                        <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                     </Button>
+                )}
+            </div>
+            <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4">
+              <CardHeader className="p-0 pb-2"> {/* Reduced padding */}
+                <CardTitle className="text-base leading-snug line-clamp-2 mb-1">{post.title || 'Untitled Post'}</CardTitle> {/* Slightly smaller title */}
+                 <CardDescription className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {/* <CategoryIcon className="h-3 w-3" /> {post.category || 'Uncategorized'} • */}
+                    <MapPin className="h-3 w-3"/> <span className="truncate">{post.location || 'N/A'}</span>
+                 </CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3 line-clamp-2"> {/* Line clamp description */}
+                {post.description || 'No description'}
+              </CardContent>
+              <CardFooter className="flex justify-between items-center pt-3 text-xs p-0 mt-auto border-t">
+                 <span className="font-semibold text-primary text-sm">
+                    {/* Display budget differently based on content */}
+                    {post.budget?.toLowerCase().includes('budget:') ? post.budget : `₹${post.budget}`}
+                 </span>
+                 <span className="text-muted-foreground">{formattedDate}</span>
+              </CardFooter>
+            </Link>
+        </Card>
+    );
 }
