@@ -5,47 +5,43 @@ export default function TermsPage() {
        <h1>Terms of Service</h1>
       <p>Last updated: {new Date().toLocaleDateString()}</p>
       <p>
-        Welcome to Bharat Need! These Terms of Service ("Terms") govern your use of the BharatNeed.com website and any related services (collectively, the "Service") provided by Bharat Need ("we," "us," or "our").
+        Welcome to BharatNeed.com. By using this platform, you agree to the following terms:
       </p>
-      <h2>1. Acceptance of Terms</h2>
+      <h2>1. Platform Purpose</h2>
       <p>
-        By accessing or using the Service, you agree to be bound by these Terms. If you disagree with any part of the terms, then you may not access the Service.
+        BharatNeed is a peer-to-peer (P2P) platform. We simply provide a space for users to post needs and offers. We are not involved in any deals, and we do not act as intermediaries or mediators.
       </p>
-      <h2>2. Using the Service</h2>
+      <h2>2. No Guarantees or Vetting</h2>
+      <p>
+        We do not verify or guarantee any user content, service, or post. Users are responsible for doing their own due diligence before engaging with others.
+      </p>
+       <h2>3. User Conduct</h2>
+      <p>Users agree not to:</p>
       <ul>
-        <li>You must be at least 18 years old to use the Service.</li>
-        <li>You are responsible for the accuracy of the information you provide when posting needs or offers.</li>
-        <li>You agree not to post content that is illegal, harmful, fraudulent, discriminatory, or infringes on the rights of others.</li>
-        <li>Interactions between users are solely between them. Bharat Need is a platform provider and is not responsible for user conduct, the quality of services/goods exchanged, or resolving disputes.</li>
-        <li>You agree to use the chat feature responsibly and respectfully.</li>
+        <li>Post false, illegal, or harmful content</li>
+        <li>Harass, scam, or impersonate others</li>
+        <li>Use bots or automation to interact with the platform</li>
       </ul>
-       <h2>3. User Accounts</h2>
+      <h2>4. Zero Liability for Transactions</h2>
       <p>
-        You may need to register for an account to access certain features. You are responsible for safeguarding your account information and for all activities that occur under your account.
+        BharatNeed does not take responsibility for any deals, payments, losses, or scams. All transactions are at your own risk.
       </p>
-      <h2>4. Content Ownership</h2>
+      <h2>5. Communication Tools</h2>
       <p>
-        You retain ownership of the content you post. By posting content, you grant Bharat Need a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, publish, and distribute your content solely for the purpose of operating and promoting the Service.
+        Messaging is provided solely for direct peer-to-peer communication. We do not monitor private messages unless required by law.
       </p>
-      <h2>5. Disclaimers</h2>
+       <h2>6. Automatic Deletion of Posts and Chats</h2>
+      <ul>
+        <li>All posts will be automatically deleted after 30 days from the date of posting.</li>
+        <li>Chats will be automatically deleted after 7 days of inactivity.</li>
+      </ul>
+      <h2>7. Account Suspension</h2>
       <p>
-        The Service is provided "as is" without warranties of any kind. We do not guarantee the accuracy, completeness, or reliability of any content or user interactions.
+        We may suspend or delete accounts that post harmful, illegal, or inappropriate content.
       </p>
-      <h2>6. Limitation of Liability</h2>
+      <h2>8. Changes to Terms</h2>
       <p>
-       Bharat Need shall not be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use of the Service.
-      </p>
-      <h2>7. Modifications to Terms</h2>
-      <p>
-        We reserve the right to modify these Terms at any time. We will notify users of significant changes. Your continued use of the Service after changes constitutes acceptance of the new Terms.
-      </p>
-      <h2>8. Governing Law</h2>
-      <p>
-        These Terms shall be governed by the laws of India, without regard to its conflict of law provisions.
-      </p>
-      <h2>9. Contact Us</h2>
-      <p>
-        If you have any questions about these Terms, please contact us via the Contact page.
+        These terms may change. Continued use implies acceptance of the latest version.
       </p>
     </div>
   );
