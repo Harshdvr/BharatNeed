@@ -402,7 +402,7 @@ export default function SignUpPage() {
         } else if (error.code === 'auth/invalid-phone-number') {
              description = "Invalid phone number format. Please use the format +91XXXXXXXXXX.";
              setOtpSent(false);
-             form.setValue('phone', '');
+            // form.setValue('phone', ''); // Don't clear, let user correct it
         } else if (error.code === 'auth/invalid-verification-code') {
              description = 'Invalid OTP entered. Please try again.';
              form.setValue('otp', ''); // Clear OTP field
@@ -412,7 +412,15 @@ export default function SignUpPage() {
         } else if (error.code === 'auth/too-many-requests') {
              description = 'Too many attempts. Please try again later.';
              // Keep otpSent state as is, just inform user
-        } // Add other specific errors as needed
+        } else if (error.code === 'auth/missing-client-identifier') {
+            description = 'Missing application verification. Please ensure reCAPTCHA is set up correctly.';
+            setOtpSent(false); // Reset OTP state
+        }
+        else if (error.code === 'auth/hostname-mismatch' || (error.message && error.message.includes('Hostname match not found'))) {
+            description = "Authentication domain mismatch. Check your Firebase project's authorized domains and ensure your current domain is listed.";
+            setOtpSent(false); // Reset OTP state
+        }
+
 
          toast({
             title: title,

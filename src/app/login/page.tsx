@@ -53,7 +53,7 @@ const phoneSchema = z.object({
     path: ["otp"], // specific path for the error
 });
 
-// Email login schema
+// Email login schema (no OTP for Email Link)
 const emailSchema = z.object({
     email: z.string().email('Invalid email address'),
 });
@@ -148,7 +148,7 @@ export default function LoginPage() {
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(currentSchema),
-    defaultValues: { phone: '', email: '', otp: '' },
+    defaultValues: { phone: '', email: '', otp: '' }, // Initialize OTP field
     mode: 'onChange',
   });
 
@@ -302,7 +302,7 @@ export default function LoginPage() {
             }
 
             console.log("Using appVerifier:", appVerifier);
-            console.log("Attempting to send OTP to:", values.phone);
+            console.log("Attempting to send OTP to:", values.phone!);
 
             // signInWithPhoneNumber uses the rendered reCAPTCHA implicitly
             const confirmationResult = await signInWithPhoneNumber(authInstance, values.phone!, appVerifier);
@@ -386,7 +386,15 @@ export default function LoginPage() {
         } else if (error.code === 'auth/too-many-requests') {
              description = 'Too many attempts. Please try again later.';
              setOtpSent(false); // Allow retry after some time
-        } // Add other specific errors
+        } else if (error.code === 'auth/missing-client-identifier') {
+            description = 'Missing application verification. Please ensure reCAPTCHA is set up correctly.';
+            setOtpSent(false); // Reset OTP state
+        }
+        // Handle auth/hostname-mismatch specifically
+        else if (error.code === 'auth/hostname-mismatch' || (error.message && error.message.includes('Hostname match not found'))) {
+            description = "Authentication domain mismatch. Check your Firebase project's authorized domains and ensure your current domain is listed.";
+            setOtpSent(false); // Reset OTP state
+        }
 
         toast({
             title: title,
