@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send } from "lucide-react";
 import { useState, useEffect } from "react"; // Import useState and useEffect
+import { handleSendMessageAction } from '@/actions/chatActions'; // Import the server action
 
 // Mock Data for testing chat
 const mockContacts = [
@@ -67,23 +68,6 @@ export default function ChatPage() {
     }
   }, [selectedChatId]);
 
-   // Placeholder Server Action for sending message
-   const handleSendMessage = async (formData: FormData) => {
-        'use server';
-        const message = formData.get('message');
-        if (!message || typeof message !== 'string' || message.trim() === '') return { success: false, error: "Message cannot be empty." };
-
-        console.log("Attempting to send message (server action):", message);
-        try {
-           await new Promise(resolve => setTimeout(resolve, 500)); // Simulate DB save
-           console.log("Message saved (simulated).");
-           // In a real app: Add message to Firestore, update last message for contact, maybe send notification
-           return { success: true };
-        } catch (error) {
-            console.error("Error saving message:", error);
-            return { success: false, error: "Failed to send message." };
-        }
-   };
 
     // Client-side form submission handler
     const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -110,8 +94,8 @@ export default function ChatPage() {
         }
          formElement.reset(); // Reset form immediately after optimistic update
 
-        // Call the server action
-        const result = await handleSendMessage(formData);
+        // Call the server action from the imported file
+        const result = await handleSendMessageAction(formData);
 
         setLoading(false); // Stop loading regardless of success/failure
 
