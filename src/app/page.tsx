@@ -1,4 +1,3 @@
-
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect } from 'react';
@@ -6,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
-import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart, Plus, Search, MessageSquare } from 'lucide-react'; // Added new icons
+import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react'; // Removed unused icons
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from '@/hooks/use-toast';
@@ -14,22 +13,8 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth and firestore instance, and helper
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
+import CategorySelector from '@/components/category-selector'; // Import the new component
 
-
-// Placeholder for category icons - Assuming these remain static
-const categoryIcons: { [key: string]: React.ElementType } = {
-  'Services': Tag,
-  'Buy/Sell': IndianRupee,
-  'Farming': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343m11.314 11.314a8 8 0 01-11.314 0m5.657-5.657a3 3 0 11-5.657 0 3 3 0 015.657 0zM15.5 7.5l-4 4" /></svg>, // Placeholder leaf icon
-  'Tuitions': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>, // Placeholder book icon
-  'Jobs': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>, // Placeholder briefcase icon
-  'Help': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>, // Placeholder heart icon
-  'Other': Tag, // Added Other category
-};
-
-const getCategoryIcon = (category: string): React.ElementType => {
-  return categoryIcons[category] || Tag; // Default to Tag icon
-};
 
 // Mock Data for testing
 const mockPostings = [
@@ -85,6 +70,19 @@ const mockPostings = [
     createdAt: new Date(Date.now() - 86400000), // 1 day ago
     isFavorite: false,
   },
+  {
+    id: 'mock5',
+    title: 'Mock Need: Part-time Graphic Designer',
+    description: 'Looking for a designer for social media posts, 10-15 hours/week.',
+    category: 'jobs',
+    postType: 'need',
+    location: 'Remote',
+    budget: '₹15k/month',
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/designer/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
+    isFavorite: false,
+  },
 ];
 
 
@@ -96,6 +94,8 @@ export default function Home() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock data
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
 
   // --- Commented out Firestore fetching logic ---
   /*
@@ -220,25 +220,24 @@ export default function Home() {
 
   // Handle auth error display
   useEffect(() => {
-    if (authError) {
+    if (authError && !authLoading) { // Check !authLoading to avoid toast during initial check
       console.error("Firebase Auth Hook Error:", authError);
+      // Consider if a toast is the best UX here, or just rely on login/signup prompts
+      // toast({
+      //   title: "Authentication Error",
+      //   description: "Could not verify user status.",
+      //   variant: "destructive",
+      // });
     }
-  }, [authError, toast]);
-
-  // Show LoadingSpinner only if auth is loading, not for data fetching (using mock data)
-   if (authLoading) {
-       return (
-            <div className="flex justify-center items-center min-h-[60vh]">
-                <LoadingSpinner />
-            </div>
-       );
-   }
+  }, [authError, authLoading, toast]);
 
 
   return (
     <div className="relative min-h-full">
+      {isLoading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-10" />} {/* Show spinner conditionally */}
+
       {/* Hero Section */}
-      <div className="mb-12 text-center pt-8 pb-4">
+      <div className="mb-8 text-center pt-8 pb-4">
         <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
           Welcome to Bharat Need
         </h1>
@@ -258,25 +257,19 @@ export default function Home() {
           </Button>
       </div>
 
-      {/* Category Filters Placeholder */}
-      <div className="mb-8 flex flex-wrap justify-center gap-2">
-        {Object.keys(categoryIcons).map((category) => {
-          const Icon = getCategoryIcon(category);
-          return (
-            <Button key={category} variant="outline" size="sm" className="gap-1 capitalize">
-              <Icon />
-              {category}
-            </Button>
-          );
-        })}
-         <Button variant="secondary" size="sm">All Categories</Button>
-      </div>
+      {/* Category Selector Component */}
+      <CategorySelector
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
+      />
+
 
       {/* Postings Grid */}
       {currentPostings.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12 mt-8"> {/* Added margin-top */}
             {currentPostings.map((post) => {
-              const CategoryIcon = getCategoryIcon(post.category);
+              // Find icon based on category name - assuming category names match keys in CategorySelector
+              const CategoryIcon = CategorySelector.categoryDetails.find(c => c.name.toLowerCase() === post.category?.toLowerCase())?.icon || Tag;
               const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
               const formattedDate = createdAtDate ? createdAtDate.toLocaleDateString() : 'N/A';
 
@@ -316,7 +309,7 @@ export default function Home() {
                        </Badge>
                     </div>
                     <CardDescription className="flex items-center gap-1 text-xs pt-1 capitalize">
-                       <CategoryIcon /> {post.category || 'Uncategorized'}
+                       <CategoryIcon className="h-4 w-4" /> {post.category || 'Uncategorized'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3">
@@ -358,7 +351,10 @@ export default function Home() {
                     {/* Step 1: Post Easily */}
                     <div className="flex flex-col items-center">
                         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                            <Plus className="h-8 w-8 text-primary-foreground" />
+                             {/* Assuming Plus icon is desired */}
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
                         </div>
                         <h3 className="text-xl font-semibold mb-2">1. Post Easily</h3>
                         <p className="text-muted-foreground">
@@ -368,7 +364,10 @@ export default function Home() {
                     {/* Step 2: Find Locally */}
                     <div className="flex flex-col items-center">
                         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                            <Search className="h-8 w-8 text-primary-foreground" />
+                             {/* Assuming Search icon is desired */}
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
                         </div>
                         <h3 className="text-xl font-semibold mb-2">2. Find Locally</h3>
                         <p className="text-muted-foreground">
@@ -378,7 +377,10 @@ export default function Home() {
                     {/* Step 3: Connect Directly */}
                     <div className="flex flex-col items-center">
                          <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
-                            <MessageSquare className="h-8 w-8 text-primary-foreground" />
+                             {/* Assuming MessageSquare icon is desired */}
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
                         </div>
                         <h3 className="text-xl font-semibold mb-2">3. Connect Directly</h3>
                         <p className="text-muted-foreground">

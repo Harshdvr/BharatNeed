@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -39,9 +38,9 @@ interface PreviewData extends Omit<FormDataState, 'imageFiles'> {
 
 const steps = [
     { id: 1, name: 'Details', fields: ['postType', 'title', 'category', 'description'] },
-    { id: 2, name: 'Location & Value', fields: ['location', 'budget', 'urgency'] },
-    { id: 3, name: 'Media', fields: ['imageFiles'] },
-    { id: 4, name: 'Preview' } // Preview step
+    { id: 2, name: 'Value & Location', fields: ['budget', 'urgency', 'location'] }, // Reordered and Renamed Step 2
+    { id: 3, name: 'Media', fields: ['imageFiles'] }, // Reordered and Renamed Step 3
+    { id: 4, name: 'Preview' } // Preview step remains step 4
 ];
 
 export default function PostNeedPage() {
@@ -85,7 +84,8 @@ export default function PostNeedPage() {
         }
     }, [user, authLoading, authError, router, toast]);
 
-    const categories = ["Services", "Buy/Sell", "Jobs", "Farming", "Tuitions", "Help", "Other"];
+    // Updated categories to match CategorySelector
+    const categories = ["Buy/Sell", "Services", "Jobs", "Farming", "Education", "Help", "Property", "Other"];
     const urgencies = ["Low", "Medium", "High", "Urgent"];
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -124,25 +124,34 @@ export default function PostNeedPage() {
 
     const validateStep = (step: number): boolean => {
         const currentStepFields = steps.find(s => s.id === step)?.fields || [];
+        let firstErrorField: string | null = null;
+
         for (const field of currentStepFields) {
+            const value = formData[field as keyof FormDataState];
             if (field === 'imageFiles') {
-                if (formData.imageFiles.length === 0) {
-                    toast({ title: "Missing Image", description: "Please upload at least one image.", variant: "destructive" });
+                if (!Array.isArray(value) || value.length === 0) {
+                    firstErrorField = firstErrorField || 'image upload';
+                } else if (value.length > 10) {
+                    toast({ title: "Too Many Images", description: "Maximum 10 images allowed.", variant: "destructive" });
                     return false;
-                }
-                 if (formData.imageFiles.length > 10) {
-                     toast({ title: "Too Many Images", description: "Maximum 10 images allowed.", variant: "destructive" });
-                     return false;
-                 }
-                 if (formData.imageFiles.some(f => f.size > 5 * 1024 * 1024)) {
+                 } else if (value.some(f => f.size > 5 * 1024 * 1024)) {
                       toast({ title: "Image Too Large", description: "Maximum 5MB per image.", variant: "destructive" });
                       return false;
                  }
-            } else if (!formData[field as keyof FormDataState]) {
-                toast({ title: "Missing Field", description: `Please fill in the '${field}' field.`, variant: "destructive" });
-                return false;
+            } else if (typeof value !== 'string' || value.trim() === '') {
+                firstErrorField = firstErrorField || field;
             }
         }
+
+        if (firstErrorField) {
+             toast({
+                title: "Missing Information",
+                description: `Please fill in the '${firstErrorField}' field.`,
+                variant: "destructive"
+            });
+            return false;
+        }
+
         return true;
     };
 
@@ -250,8 +259,10 @@ export default function PostNeedPage() {
         return <div className="flex justify-center items-center min-h-[60vh]"><LoadingSpinner /></div>;
      }
      if (!user) {
-        return <div className="flex justify-center items-center min-h-[60vh]"><p className="text-muted-foreground">Redirecting to login...</p></div>;
+         // Instead of returning null, maybe return a message or rely on the useEffect redirect
+         return <div className="flex justify-center items-center min-h-[60vh]"><p className="text-muted-foreground">Redirecting to login...</p></div>;
      }
+
 
     return (
         <div className="max-w-2xl mx-auto relative">
@@ -309,14 +320,9 @@ export default function PostNeedPage() {
                              </>
                         )}
 
-                        {/* Step 2: Location & Value */}
+                        {/* Step 2: Value & Location */}
                         {currentStep === 2 && (
                             <>
-                               <div className="space-y-2">
-                                    <Label htmlFor="location">Location *</Label>
-                                    <Input id="location" name="location" placeholder="E.g., Your City, State or 'Remote'" required value={formData.location} onChange={handleInputChange} disabled={loading}/>
-                                     <p className="text-xs text-muted-foreground">Be specific if location matters, or type 'Remote'.</p>
-                                </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="budget">Budget / Price *</Label>
                                     <Input id="budget" name="budget" placeholder="E.g., ₹500, Negotiable, Free, Daily Wage" required value={formData.budget} onChange={handleInputChange} disabled={loading}/>
@@ -332,6 +338,11 @@ export default function PostNeedPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="location">Location *</Label>
+                                    <Input id="location" name="location" placeholder="E.g., Your City, State or 'Remote'" required value={formData.location} onChange={handleInputChange} disabled={loading}/>
+                                     <p className="text-xs text-muted-foreground">Be specific if location matters, or type 'Remote'.</p>
                                 </div>
                             </>
                         )}
