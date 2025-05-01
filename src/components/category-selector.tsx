@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -36,17 +37,15 @@ export default function CategorySelector({ selectedCategory, onSelectCategory }:
           variant="outline"
           className={cn(
             'flex flex-col items-center justify-center h-20 w-20 p-2 rounded-lg border shadow-sm transition-colors', // Base shadow
-            'hover:shadow-md hover:border-primary/50', // Add hover shadow and border effect
             selectedCategory === category.name.toLowerCase()
               ? 'bg-primary/10 border-primary text-primary' // Selected state
-              : 'text-foreground hover:bg-muted/50' // Default and hover state
+              : 'text-foreground hover:bg-primary/10 hover:border-primary hover:text-primary hover:shadow-md' // Default and hover state updated
           )}
           onClick={() => onSelectCategory(category.name.toLowerCase())}
         >
-          {/* Apply orange color (primary) to the icon */}
+          {/* Apply orange color (primary) to the icon - Ensure it stays orange on hover */}
           <category.icon className={cn(
-              "h-6 w-6 mb-1",
-              selectedCategory === category.name.toLowerCase() ? 'text-primary' : 'text-primary' // Ensure icon is orange (primary)
+              "h-6 w-6 mb-1 text-primary" // Keep icon color primary
            )} />
           <span className="text-xs font-medium">{category.name}</span>
         </Button>
@@ -65,3 +64,4 @@ export default function CategorySelector({ selectedCategory, onSelectCategory }:
 
 // Export category details if needed elsewhere
 CategorySelector.categoryDetails = categoryDetails;
+
