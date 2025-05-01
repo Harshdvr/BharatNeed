@@ -7,7 +7,7 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send } from "lucide-react";
-import { useState } from "react"; // Import useState for loading state
+import { useState, useEffect } from "react"; // Import useState and useEffect
 
 // Mock Data for testing chat
 const mockContacts = [
@@ -58,6 +58,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<any[]>(selectedChatId ? mockMessages[selectedChatId as keyof typeof mockMessages] || [] : []); // Load messages for selected chat
 
   useEffect(() => {
+    // TODO: Fetch real contacts and messages based on user authentication and selectedChatId
     // Update messages when selected chat changes
     if (selectedChatId) {
       setMessages(mockMessages[selectedChatId as keyof typeof mockMessages] || []);
@@ -66,6 +67,7 @@ export default function ChatPage() {
     }
   }, [selectedChatId]);
 
+   // Placeholder Server Action for sending message
    const handleSendMessage = async (formData: FormData) => {
         'use server';
         const message = formData.get('message');
@@ -91,28 +93,39 @@ export default function ChatPage() {
         const formElement = event.currentTarget; // Store reference to form
         const messageText = formData.get('message') as string;
 
+        // Optimistically update UI before calling server action
+        const newMessage = {
+            id: `m-${Date.now()}`, // Temporary unique ID
+            sender: 'me',
+            text: messageText,
+            timestamp: new Date(),
+        };
+
+        if (selectedChatId) {
+            setMessages(prev => [...prev, newMessage]);
+             // Update last message preview and sort contacts
+            setContacts(prevContacts => prevContacts.map(contact =>
+                contact.id === selectedChatId ? { ...contact, lastMessage: messageText, timestamp: new Date() } : contact
+            ).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
+        }
+         formElement.reset(); // Reset form immediately after optimistic update
+
+        // Call the server action
         const result = await handleSendMessage(formData);
 
-        setLoading(false);
-        if (result?.success && selectedChatId) {
-            // Optimistically update UI with the new message
-            const newMessage = {
-                id: `m-${Date.now()}`, // Temporary unique ID
-                sender: 'me',
-                text: messageText,
-                timestamp: new Date(),
-            };
-            setMessages(prev => [...prev, newMessage]);
-            // Also update the last message preview in the contacts list (optional)
-             setContacts(prevContacts => prevContacts.map(contact =>
-                contact.id === selectedChatId ? { ...contact, lastMessage: messageText, timestamp: new Date() } : contact
-            ).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())); // Resort contacts
+        setLoading(false); // Stop loading regardless of success/failure
 
-            formElement.reset();
-            console.log("Message sent successfully (client).");
+        if (result?.success) {
+            console.log("Message sent successfully (client confirmation).");
+            // Optionally: Update the temporary message ID with the real one from the server if needed
         } else {
              console.error("Failed to send message (client):", result?.error);
-             // Optionally show toast message here
+             // Revert optimistic UI update or show error message
+             if (selectedChatId) {
+                setMessages(prev => prev.filter(msg => msg.id !== newMessage.id));
+                // Potentially revert contact last message update as well or show error indicator
+             }
+             // TODO: Show toast message for error
         }
     };
 
@@ -128,7 +141,7 @@ export default function ChatPage() {
             {contacts.length > 0 ? contacts.map((contact) => (
               <Button
                 key={contact.id}
-                variant={selectedContactId === contact.id ? "secondary" : "ghost"}
+                variant={selectedChatId === contact.id ? "secondary" : "ghost"}
                 className="w-full justify-start h-auto py-2 px-3"
                 onClick={() => setSelectedChatId(contact.id)} // Select chat on click
               >

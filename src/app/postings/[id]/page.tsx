@@ -16,7 +16,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth, firestore, and helper
 import { useState } from 'react';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'; // Import Firestore functions
-
+import { useRouter } from 'next/navigation'; // Import useRouter
 
 interface Posting {
     id: string;
@@ -66,6 +66,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
     const [isLoading, setIsLoading] = useState(false); // Add loading state for async operations like bidding/negotiating
     const { toast } = useToast();
     const [user, authLoading] = useAuthState(auth); // Get current user state
+    const router = useRouter(); // Initialize router
 
     /*
     if (isLoading) {
@@ -126,11 +127,22 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
      }
 
      const handleContactSeller = () => {
-         if (!user) return toast({ title: "Login Required", variant: "destructive" });
-         console.log("Initiating chat...");
-         // Redirect to chat page with seller ID
-         // router.push(`/chat?userId=${ad.userId}`) // Assuming router is imported
-         toast({ description: "Chat functionality not implemented." });
+         if (!user) {
+            toast({ title: "Login Required", description: "Please log in to contact the poster.", variant: "destructive" });
+            return;
+         }
+         if (!ad.userId) {
+             toast({ title: "Error", description: "Poster ID not found.", variant: "destructive" });
+             return;
+         }
+         if (user.uid === ad.userId) {
+            toast({ description: "You cannot contact yourself." });
+            return;
+         }
+         console.log("Redirecting to chat...");
+         // Redirect to chat page with seller ID and potentially posting ID
+         router.push(`/chat?contact=${ad.userId}&post=${ad.id}`);
+         // toast({ description: "Chat functionality not implemented." }); // Removed placeholder toast
      }
 
 
@@ -227,17 +239,18 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                      </Button>
                                 </form>
                             )}
-                             <Button variant="default" className="w-full" onClick={handleContactSeller} disabled={isLoading}>
-                                 <MessageSquare className="mr-2 h-4 w-4" /> Contact Poster
+                             <Button variant="default" className="w-full" onClick={handleContactSeller} disabled={isLoading || authLoading || user?.uid === ad.userId}>
+                                 <MessageSquare className="mr-2 h-4 w-4" />
+                                 {user?.uid === ad.userId ? "Your Post" : "Contact Poster"}
                              </Button>
                              <div className="grid grid-cols-3 gap-2">
-                                 <Button variant="outline" size="sm" className="w-full" onClick={handleToggleFavorite} disabled={isLoading}>
+                                 <Button variant="outline" size="sm" className="w-full" onClick={handleToggleFavorite} disabled={isLoading || authLoading}>
                                      <Heart className="mr-1 h-4 w-4" /> Favorite
                                  </Button>
                                  <Button variant="outline" size="sm" className="w-full" onClick={handleShare} disabled={isLoading}>
                                      <Share2 className="mr-1 h-4 w-4" /> Share
                                  </Button>
-                                 <Button variant="outline" size="sm" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleReport} disabled={isLoading}>
+                                 <Button variant="outline" size="sm" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleReport} disabled={isLoading || authLoading}>
                                       <Flag className="mr-1 h-4 w-4" /> Report
                                  </Button>
                              </div>
