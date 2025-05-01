@@ -1,40 +1,71 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.pnp.js
+.yarn/install-state.gz
 
-# testing
+# Testing
 /coverage
 
-# next.js
+# Next.js
 /.next/
 /out/
 
-# production
+# Production
 /build
 
-# misc
+# Misc
 .DS_Store
 *.pem
 
-# debug
+# Environment Variables
+.env
+.env*.local
+!.env.example
+
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
 
-# vercel
-.vercel
+# Editor directories and files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
 
-# typescript
+# IDE specific files
+.idea
+*.iml
+
+# TypeScript cache
 *.tsbuildinfo
-next-env.d.ts
 
-.genkit/*
+# Optional: Firebase emulator data
+# firebase-*.log
+# local_*.rules
+# *.snapshot
+# firestore.indexes.json.staging
+# firestore.rules.orig
+# storage.rules.orig
+# *.local
+# .firebase/emulators
+
+# Optional: Local settings
+.local
+local.settings.json
+local-settings.json
+
+# Optional: Turborepo cache
+.turbo
+
+# Optional: Deployment artifacts
+/.vercel
+/vercel.json
+/netlify
+netlify.toml
