@@ -15,6 +15,7 @@ import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, li
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import CategorySelector from '@/components/category-selector'; // Import the new component
 import { cn } from '@/lib/utils';
+import { formatDistanceToNowStrict } from 'date-fns'; // Import date-fns for relative time
 
 
 // Mock Data for testing - Updated to better match reference image content
@@ -71,7 +72,7 @@ const mockPostings = [
     budget: '₹1,500', // Changed format (per dozen implied)
     urgency: 'low',
     imageUrls: ['https://picsum.photos/seed/mangoes/300/200'],
-    createdAt: new Date(Date.now() - 86400000), // 1 day ago
+    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago (changed to be not 'new')
     isFavorite: false,
     featured: true,
   },
@@ -135,16 +136,89 @@ const mockPostings = [
 ];
 
 
+// --- Simplified Feed Algorithm ---
+
+// Mock User Data (Replace with actual data fetching)
+const mockUserPreferences = {
+  categories: ['services', 'farming'], // Example preferences
+  keywords: ['repair', 'organic'], // Example keywords
+};
+const mockUserLocation = null; // Replace with actual location logic if available
+
+// Scoring Function (Simplified)
+const calculateScore = (post: any, preferences: typeof mockUserPreferences): number => {
+  let score = 0;
+  const now = new Date();
+  const postDate = post.createdAt instanceof Date ? post.createdAt : new Date();
+  const hoursSincePost = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60);
+
+  // Category Match Bonus
+  if (preferences.categories.includes(post.category?.toLowerCase())) {
+    score += 5;
+  }
+
+  // Keyword Match Bonus (simple title check)
+  if (preferences.keywords.some(keyword => post.title?.toLowerCase().includes(keyword))) {
+    score += 3;
+  }
+
+  // Trending Bonus (using 'featured' flag as proxy)
+  if (post.featured) {
+    score += 4;
+  }
+
+  // Recency Bonus (Higher score for newer posts)
+  if (hoursSincePost <= 24) { // Within 1 day
+    score += 3;
+  } else if (hoursSincePost <= 72) { // Within 3 days
+    score += 1;
+  }
+
+  // Proximity Bonus (Placeholder - cannot calculate with mock strings)
+  // if (isNearby(post.location, userLocation)) { score += 4; }
+
+  // Image Bonus
+  if (post.imageUrls && post.imageUrls.length > 0) {
+    score += 1;
+  }
+
+  return score;
+};
+
+// Function to get the personalized feed (Simplified for mock data)
+const getPersonalizedFeed = (
+  allPosts: any[],
+  preferences: typeof mockUserPreferences,
+  limit: number = 20
+): any[] => {
+  const scoredPosts = allPosts
+    .filter(post => !post.recentlyViewed) // Exclude recently viewed for the main feed
+    .map(post => ({
+      ...post,
+      score: calculateScore(post, preferences),
+      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : new Date()).getTime()) / (1000 * 60 * 60) <= 48 // Mark as recent if within 48 hours
+    }))
+    .sort((a, b) => b.score - a.score); // Sort by score descending
+
+  // Simple mixing: Take top scored posts. A real implementation would use the 40/30/30 logic.
+  return scoredPosts.slice(0, limit);
+};
+
+// --- End of Simplified Feed Algorithm ---
+
+
 export default function Home() {
   const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-  const [currentPostings, setCurrentPostings] = useState<any[]>(mockPostings); // Initialize with mock data
-  const [isLoading, setIsLoading] = useState(false); // Set initial loading to false as we use mock data
+  const [isLoading, setIsLoading] = useState(false); // Keep loading state
   const [userFavorites, setUserFavorites] = useState<string[]>([]); // State for user's favorite IDs
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock data
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  // State for the different feed sections
+  const [personalizedFeed, setPersonalizedFeed] = useState<any[]>([]);
+  const [recentlyViewedPostings, setRecentlyViewedPostings] = useState<any[]>([]);
 
   // --- Commented out Firestore fetching logic ---
   /*
@@ -152,77 +226,39 @@ export default function Home() {
     if (firestore) {
       setFirestoreInitialized(true);
     } else {
-      const timeoutId = setTimeout(() => {
-        if (firestore) {
-          setFirestoreInitialized(true);
-        } else {
-          console.error("Firestore still not initialized after delay.");
-          toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
-          setIsLoading(false);
-        }
-      }, 2000);
-      return () => clearTimeout(timeoutId);
+      // ... Firestore initialization check ...
     }
   }, [toast]);
 
 
   useEffect(() => {
-    const filter = searchParams.get('filter');
-    const sort = searchParams.get('sort');
-    if (filter || sort) {
-        console.log('Applying filters - Filter:', filter, 'Sort:', sort);
-    }
-
-    const fetchData = async () => {
-        setIsLoading(true);
-        try {
-            const fs = ensureFirestoreInitialized();
-
-            const postingsRef = collection(fs, 'postings');
-            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20));
-            const postingsSnapshot = await getDocs(q);
-            const fetchedPostings = postingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            let favs: string[] = [];
-            if (user) {
-                const userDocRef = doc(fs, 'users', user.uid);
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    favs = userDocSnap.data().favorites || [];
-                    setUserFavorites(favs);
-                }
-            }
-
-            const postingsWithFavorites = fetchedPostings.map(p => ({
-                ...p,
-                isFavorite: favs.includes(p.id)
-            }));
-
-            setCurrentPostings(postingsWithFavorites);
-            console.log("Fetched postings and favorites (if applicable)");
-
-        } catch (error: any) {
-            console.error("Error fetching data:", error);
-             if (error.message.includes("Firestore is not initialized")) {
-                  toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
-             } else if (error.code === 'unavailable' || error.message.includes('offline')) {
-                 toast({ title: "Offline", description: "Could not reach the server. Displaying cached data if available.", variant: "default" });
-             }
-             else {
-                 toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
-             }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-     if (!authLoading && firestoreInitialized) {
-         fetchData();
-     }
+    // ... Firestore data fetching logic ...
+    // Inside fetchData, after getting posts and favs:
+    // const feed = getPersonalizedFeed(fetchedPostingsWithFavorites, mockUserPreferences); // Use the algorithm
+    // setPersonalizedFeed(feed);
+    // setRecentlyViewedPostings(fetchedPostingsWithFavorites.filter(p => p.recentlyViewed)); // Filter for recently viewed
 
   }, [toast, authLoading, user, searchParams, firestoreInitialized]);
   */
   // --- End of commented out Firestore fetching logic ---
+
+  // Apply algorithm to mock data on initial load and when category changes
+  useEffect(() => {
+    setIsLoading(true);
+    // Simulate fetching and processing
+    setTimeout(() => {
+      const filteredMockPosts = selectedCategory
+        ? mockPostings.filter(p => p.category?.toLowerCase() === selectedCategory)
+        : mockPostings;
+
+      const feed = getPersonalizedFeed(filteredMockPosts, mockUserPreferences);
+      setPersonalizedFeed(feed);
+      setRecentlyViewedPostings(filteredMockPosts.filter(p => p.recentlyViewed).sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : new Date()).getTime())); // Sort recent by date
+      setIsLoading(false);
+    }, 500); // Simulate network delay
+
+  }, [selectedCategory]); // Re-run when category changes
+
 
   // Handle favoriting logic (Simulated for mock data)
   const handleToggleFavorite = async (postId: string) => {
@@ -230,12 +266,13 @@ export default function Home() {
         toast({ title: "Login Required", description: "Please log in to add favorites.", variant: "destructive" });
         return;
     }
-     // Optimistically update UI for mock data
+     // Optimistically update UI for mock data in both feeds
     const isCurrentlyFavorite = userFavorites.includes(postId);
-    setCurrentPostings(prevPostings =>
-      prevPostings.map(p =>
-        p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
-      )
+    setPersonalizedFeed(prev =>
+      prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
+    );
+    setRecentlyViewedPostings(prev =>
+      prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
     );
     setUserFavorites(prevFavs =>
         isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
@@ -247,19 +284,13 @@ export default function Home() {
 
     // Simulate Firestore update (remove in final version)
     console.log(`Simulating favorite toggle for post ${postId}. New state: ${!isCurrentlyFavorite}`);
-    console.log("Updated user favorites (simulated):", userFavorites);
 
     // In real app, keep the try/catch and Firestore update logic here
     /*
      try {
          const fs = ensureFirestoreInitialized();
          const userDocRef = doc(fs, 'users', user.uid);
-        if (isCurrentlyFavorite) {
-            await updateDoc(userDocRef, { favorites: arrayRemove(postId) });
-        } else {
-            await updateDoc(userDocRef, { favorites: arrayUnion(postId) }, { merge: true });
-        }
-        console.log("Firestore favorite status updated");
+        // ... Firestore update logic ...
     } catch (error: any) {
          // Error handling and UI revert
     }
@@ -271,26 +302,16 @@ export default function Home() {
   useEffect(() => {
     if (authError && !authLoading) { // Check !authLoading to avoid toast during initial check
       console.error("Firebase Auth Hook Error:", authError);
-      // Consider if a toast is the best UX here, or just rely on login/signup prompts
-      // toast({
-      //   title: "Authentication Error",
-      //   description: "Could not verify user status.",
-      //   variant: "destructive",
-      // });
     }
   }, [authError, authLoading, toast]);
-
-  // Filter posts for sections
-  const featuredPostings = currentPostings.filter(post => post.featured && !post.recentlyViewed);
-  const recentlyViewedPostings = currentPostings.filter(post => post.recentlyViewed);
 
 
   return (
     <div className="relative min-h-full">
-      {isLoading && <LoadingSpinner className="absolute inset-0 bg-background/50 z-10" />}
+      {isLoading && <LoadingSpinner className="fixed inset-0 bg-background/80 z-50" />} {/* Fixed position spinner */}
 
-      {/* Hero Section - Adjusted to match reference */}
-      <div className="text-center py-16 px-4 bg-gradient-to-b from-orange-50 via-white to-white"> {/* Added gradient background */}
+      {/* Hero Section */}
+      <div className="text-center py-16 px-4 bg-gradient-to-b from-[--gradient-start] via-[--gradient-middle] to-[--gradient-end] dark:from-[--gradient-start] dark:via-[--gradient-middle] dark:to-[--gradient-end]">
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl mb-4">
           Find What You Need,<br/> Offer What You Have.
         </h1>
@@ -301,22 +322,12 @@ export default function Home() {
              <Button
                 variant="default"
                 size="lg"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md rounded-md px-8 py-3" // Changed to rounded-md
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md rounded-md px-8 py-3"
                 asChild
               >
                 <Link href="/post-need">
-                  Post Your Need/Offer
+                  <Plus className="mr-2 h-5 w-5" /> Post Your Need/Offer
                 </Link>
-              </Button>
-              <Button
-                  variant="outline"
-                  size="lg"
-                  className="shadow-sm rounded-md px-8 py-3"
-                  asChild // Make button act like a link
-              >
-                  <Link href="/"> {/* Link to browse page (assuming home for now) */}
-                    Browse Listings →
-                  </Link>
               </Button>
          </div>
       </div>
@@ -331,12 +342,12 @@ export default function Home() {
        </div>
 
 
-       {/* Featured Needs & Offers Section */}
-       {featuredPostings.length > 0 && (
-           <div className="py-12 px-4 bg-muted/30"> {/* Light background for section */}
-             <h2 className="text-2xl font-semibold mb-6">Featured Needs & Offers</h2>
+       {/* Personalized Feed Section */}
+       {personalizedFeed.length > 0 && (
+           <div className="py-12 px-4 bg-muted/30">
+             <h2 className="text-2xl font-semibold mb-6">Suggested For You</h2>
              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {featuredPostings.slice(0, 4).map((post) => ( // Limit to 4 featured posts
+                {personalizedFeed.map((post) => (
                     <PostCard key={post.id} post={post} user={user} handleToggleFavorite={handleToggleFavorite} />
                 ))}
              </div>
@@ -410,34 +421,42 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
 }) {
     const CategoryIcon = CategorySelector.categoryDetails.find(c => c.name.toLowerCase() === post.category?.toLowerCase())?.icon || Tag;
     const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
-    // Simple date formatting (days ago) - consider using date-fns for more complex formatting
+
+    // Use date-fns for better relative time formatting
     let formattedDate = 'N/A';
     if (createdAtDate) {
-        const diffTime = Math.abs(new Date().getTime() - createdAtDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        formattedDate = diffDays <= 1 ? 'Today' : `${diffDays} days ago`;
+       try {
+         // Add suffix for "ago"
+         formattedDate = formatDistanceToNowStrict(createdAtDate, { addSuffix: true });
+         // Optional: Make very recent posts more prominent, e.g., "X minutes ago"
+         const minutesAgo = (new Date().getTime() - createdAtDate.getTime()) / (1000 * 60);
+         if (minutesAgo < 1) formattedDate = 'Just now';
+         else if (minutesAgo < 60) formattedDate = `${Math.round(minutesAgo)}m ago`;
+         // formatDistanceToNowStrict handles hours/days/etc.
+       } catch (e) {
+         console.error("Error formatting date:", e);
+         formattedDate = createdAtDate.toLocaleDateString(); // Fallback
+       }
     }
 
-     // Determine badge text and variant based on post type and featured status
-     let badgeText = post.postType === 'need' ? 'Need' : 'Offer';
-     let badgeVariant: "default" | "destructive" | "secondary" | "outline" = post.postType === 'need' ? 'destructive' : 'default';
-     if (post.featured && !isRecentlyViewed) {
-         // Use a different badge style for featured? Example: secondary
-         // Or combine: badgeText = `Featured ${badgeText}`
-         // For now, just stick to Need/Offer
-     }
+     // Determine badge text and variant based on post type
+     let typeBadgeText = post.postType === 'need' ? 'Need' : 'Offer';
+     let typeBadgeVariant: "default" | "destructive" | "secondary" | "outline" = post.postType === 'need' ? 'destructive' : 'default';
+
+     // Check if the post is recent (e.g., within 24 hours)
+     const isNew = post.isRecent; // Use the pre-calculated flag
 
 
     return (
-        <Card className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card border rounded-lg">
-            <div className="relative w-full aspect-[4/3]"> {/* Adjusted aspect ratio */}
+        <Card className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card border rounded-lg bg-card"> {/* Added bg-card */}
+            <div className="relative w-full aspect-[4/3]">
                 <Link href={`/postings/${post.id}`} className="block absolute inset-0 bg-muted">
                     <Image
-                        src={post.imageUrls?.[0] || 'https://picsum.photos/400/300'} // Use first image or default
+                        src={post.imageUrls?.[0] || 'https://picsum.photos/400/300'}
                         alt={post.title || 'Posting image'}
                         fill
                         style={{ objectFit: 'cover' }}
-                        className="rounded-t-lg"
+                        className="rounded-t-lg transition-transform duration-300 group-hover/card:scale-105" // Added hover effect
                         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         data-ai-hint="product service picture"
                         priority={post.id.startsWith('mock')}
@@ -445,42 +464,46 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
                 </Link>
                  {/* Badges Overlay */}
                  <div className="absolute top-2 left-2 flex gap-1.5 z-10">
-                    <Badge variant={badgeVariant} className="text-xs py-0.5 px-1.5 rounded-sm">
-                       {badgeText}
+                    <Badge variant={typeBadgeVariant} className="text-xs py-0.5 px-1.5 rounded-sm shadow"> {/* Added shadow */}
+                       {typeBadgeText}
                     </Badge>
-                    {post.featured && !isRecentlyViewed && (
-                        <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm bg-yellow-400 text-yellow-900">
+                    {isNew && !isRecentlyViewed && ( // Show 'New' badge only if recent and not in 'Recently Viewed'
+                         <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-green-500 text-white"> {/* Custom 'New' badge style */}
+                            New
+                        </Badge>
+                     )}
+                     {/* Keep featured badge logic if needed */}
+                     {/* {post.featured && !isRecentlyViewed && (
+                        <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-yellow-400 text-yellow-900">
                             Featured
                         </Badge>
-                    )}
+                    )} */}
                 </div>
                 {/* Favorite Button Overlay */}
                 {user && (
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                        className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive transition-colors" // Added transition
                         onClick={() => handleToggleFavorite(post.id)}
                         aria-label={post.isFavorite ? "Remove from favorites" : "Add to favorites"}
                         >
-                        <Heart className={`h-5 w-5 transition-colors ${post.isFavorite ? 'fill-destructive' : 'fill-transparent'}`} />
+                        <Heart className={cn("h-5 w-5 transition-all", post.isFavorite ? 'fill-destructive scale-110' : 'fill-transparent')} /> {/* Fill and scale effect */}
                      </Button>
                 )}
             </div>
             <Link href={`/postings/${post.id}`} className="flex flex-col flex-grow p-4">
-              <CardHeader className="p-0 pb-2"> {/* Reduced padding */}
-                <CardTitle className="text-base leading-snug line-clamp-2 mb-1">{post.title || 'Untitled Post'}</CardTitle> {/* Slightly smaller title */}
+              <CardHeader className="p-0 pb-2">
+                <CardTitle className="text-base leading-snug line-clamp-2 mb-1 group-hover/card:text-primary transition-colors">{post.title || 'Untitled Post'}</CardTitle> {/* Hover effect */}
                  <CardDescription className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {/* <CategoryIcon className="h-3 w-3" /> {post.category || 'Uncategorized'} • */}
                     <MapPin className="h-3 w-3"/> <span className="truncate">{post.location || 'N/A'}</span>
                  </CardDescription>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3 line-clamp-2"> {/* Line clamp description */}
+              <CardContent className="text-sm text-muted-foreground flex-grow p-0 pb-3 line-clamp-2">
                 {post.description || 'No description'}
               </CardContent>
               <CardFooter className="flex justify-between items-center pt-3 text-xs p-0 mt-auto border-t">
                  <span className="font-semibold text-primary text-sm">
-                    {/* Display budget differently based on content */}
                     {post.budget?.toLowerCase().includes('budget:') ? post.budget : `₹${post.budget}`}
                  </span>
                  <span className="text-muted-foreground">{formattedDate}</span>
