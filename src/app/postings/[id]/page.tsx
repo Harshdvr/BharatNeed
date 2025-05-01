@@ -116,6 +116,7 @@ const getPostingDetails = async (id: string, db: typeof firestore | null, curren
 
 
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
+    const { id } = params; // Destructure id from params
     const pathname = usePathname();
     const { toast } = useToast();
     const router = useRouter();
@@ -156,8 +157,8 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
 
 
             try {
-                // Pass current user's UID (or null if not logged in)
-                const data = await getPostingDetails(params.id, firestore, user?.uid || null);
+                // Pass current user's UID (or null if not logged in) and the destructured id
+                const data = await getPostingDetails(id, firestore, user?.uid || null);
                 if (data) {
                     setPosting(data);
                 } else {
@@ -172,7 +173,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         };
 
         fetchDetails();
-    }, [params.id, user, authLoading, authError]); // Refetch when ID, user, or loading state changes
+    }, [id, user, authLoading, authError]); // Use destructured id in dependency array
 
 
     const handleShare = () => {
@@ -218,8 +219,8 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         }
         if (!posting || user.uid === posting.sellerId) return; // Don't chat with self
 
-        // Navigate to chat page with context
-        router.push(`/chat?userId=${posting.sellerId}&postId=${posting.id}`);
+        // Navigate to chat page with context using the destructured id
+        router.push(`/chat?userId=${posting.sellerId}&postId=${id}`);
         // toast({ description: "Chat functionality under development." });
      }
 
@@ -238,19 +239,19 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
 
         // Optimistically update UI
         setPosting(prev => prev ? { ...prev, isFavorite: !isCurrentlyFavorite } : null);
-        console.log(`Toggled favorite for post ${posting.id}. New state: ${!isCurrentlyFavorite}`);
+        console.log(`Toggled favorite for post ${id}. New state: ${!isCurrentlyFavorite}`); // Use id
         toast({
             description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
         });
 
-        // Update Firestore
+        // Update Firestore using the destructured id
         try {
              const userDocRef = doc(firestore, 'users', user.uid);
              if (isCurrentlyFavorite) {
-                await updateDoc(userDocRef, { favorites: arrayRemove(posting.id) });
+                await updateDoc(userDocRef, { favorites: arrayRemove(id) }); // Use id
              } else {
                 // Ensure favorites array exists before trying to add to it
-                await updateDoc(userDocRef, { favorites: arrayUnion(posting.id) }, { merge: true });
+                await updateDoc(userDocRef, { favorites: arrayUnion(id) }, { merge: true }); // Use id
              }
             console.log("Firestore favorite status updated successfully.");
         } catch (error) {
@@ -304,7 +305,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                     <Card className="overflow-hidden shadow-lg rounded-lg">
                          <div className="relative aspect-video bg-muted">
                             <Image
-                                src={posting.image || 'https://picsum.photos/600/400?random=' + posting.id} // Add random query for picsum
+                                src={posting.image || 'https://picsum.photos/600/400?random=' + id} // Use id
                                 alt={posting.title}
                                 fill
                                 style={{ objectFit: 'cover' }}
@@ -450,3 +451,4 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         </div>
     );
 }
+
