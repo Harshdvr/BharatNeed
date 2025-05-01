@@ -1,3 +1,4 @@
+
 'use client'; // Needs to be a client component to manage loading state
 
 import { useState } from 'react';
@@ -8,34 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from '@/hooks/use-toast';
+import { handleContactSubmitAction } from '@/actions/contactActions'; // Import the server action
 
 export default function ContactPage() {
     const [loading, setLoading] = useState(false);
     const { toast } = useToast();
-
-    const handleSubmit = async (formData: FormData) => {
-        'use server';
-        // Note: Cannot directly modify client state (loading) from server action.
-        // A common pattern is to use useFormState hook or handle loading/toast on the client after the action returns.
-        // For simplicity here, we'll assume client handles loading start/stop around the form submission call.
-        console.log("Contact form submitted (server action)");
-        const name = formData.get('name');
-        const email = formData.get('email');
-        const message = formData.get('message');
-        console.log({ name, email, message });
-
-        try {
-            // Simulate sending email or saving to DB...
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-            console.log("Message processed successfully.");
-            // In a real app, you'd return a success status from the server action.
-            // You cannot call toast() directly from a server action.
-            return { success: true };
-        } catch (error) {
-            console.error("Error processing contact form:", error);
-            return { success: false, error: "Failed to send message." };
-        }
-    };
 
     // Client-side wrapper for form submission to handle loading state
     const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -44,7 +22,7 @@ export default function ContactPage() {
         const formData = new FormData(event.currentTarget);
 
         // Call the server action
-        const result = await handleSubmit(formData);
+        const result = await handleContactSubmitAction(formData);
 
         setLoading(false);
 
