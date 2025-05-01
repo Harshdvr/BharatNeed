@@ -1,3 +1,4 @@
+
 'use server';
 
 // TODO: Add proper input validation (e.g., using Zod)
@@ -29,13 +30,18 @@ export async function handlePostSubmitAction(formData: FormData) {
         imageFileSize: imageFile?.size,
     });
 
+    // --- Basic Validation (Add more robust validation e.g., with Zod) ---
+    if (!postType || !title || !category || !description || !location || !imageFile || imageFile.size === 0) {
+        console.error("Validation failed: Missing required fields or image.");
+        return { success: false, error: 'Please fill all required fields and upload an image.' };
+    }
+
     // --- TODO: Add Firestore and Storage logic here ---
-    // 1. Validate data
-    // 2. If image exists:
-    //    - Upload image to Firebase Storage
-    //    - Get the download URL
-    // 3. Save post data (including image URL if applicable) to Firestore
-    // 4. Handle potential errors during save/upload
+    // 1. Validate data more thoroughly
+    // 2. Upload image to Firebase Storage
+    // 3. Get the download URL
+    // 4. Save post data (including image URL) to Firestore
+    // 5. Handle potential errors during save/upload
 
     try {
         // Simulate saving to Firestore...

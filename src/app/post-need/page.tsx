@@ -178,12 +178,12 @@ export default function PostNeedPage() {
                             </Select>
                         </div>
 
-                        {/* Image Upload Placeholder */}
+                        {/* Image Upload */}
                         <div className="space-y-2">
-                            <Label htmlFor="image">Upload Image (Optional)</Label>
+                            <Label htmlFor="image">Upload Image</Label> {/* Removed "(Optional)" */}
                             {/* TODO: Implement actual image upload handling */}
-                            <Input id="image" name="image" type="file" accept="image/*" disabled={loading}/>
-                            <p className="text-xs text-muted-foreground">Add an image if helpful (max 5MB).</p>
+                            <Input id="image" name="image" type="file" accept="image/*" required disabled={loading}/> {/* Added required attribute */}
+                            <p className="text-xs text-muted-foreground">Add an image (max 5MB).</p>
                         </div>
 
 
