@@ -10,6 +10,7 @@ import { Send } from "lucide-react";
 import { useState, useEffect } from "react"; // Import useState and useEffect
 import { handleSendMessageAction } from '@/actions/chatActions'; // Import the server action
 import { useRouter } from 'next/navigation'; // Import useRouter
+import ChatTimestamp from '@/components/chat-timestamp'; // Import the new component
 
 // Mock Data for testing chat
 const mockContacts = [
@@ -57,18 +58,26 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false); // State for sending message
   const [contacts, setContacts] = useState(mockContacts); // Use mock contacts
   const [selectedChatId, setSelectedChatId] = useState<string | null>(mockContacts.length > 0 ? mockContacts[0].id : null); // Select first chat by default
-  const [messages, setMessages] = useState<any[]>(selectedChatId ? mockMessages[selectedChatId as keyof typeof mockMessages] || [] : []); // Load messages for selected chat
+  const [messages, setMessages] = useState<any[]>([]); // Start with empty messages
   const router = useRouter(); // Initialize router
 
+   // State to track if the component has mounted on the client
+  const [isClient, setIsClient] = useState(false);
+
   useEffect(() => {
-    // TODO: Fetch real contacts and messages based on user authentication and selectedChatId
-    // Update messages when selected chat changes
-    if (selectedChatId) {
+    setIsClient(true); // Set to true once component mounts on client
+  }, []);
+
+
+  useEffect(() => {
+    // Load messages only after client mount and if selectedChatId exists
+    if (isClient && selectedChatId) {
+      // Simulate fetching or use mock data
       setMessages(mockMessages[selectedChatId as keyof typeof mockMessages] || []);
     } else {
       setMessages([]);
     }
-  }, [selectedChatId]);
+  }, [selectedChatId, isClient]);
 
 
     // Client-side form submission handler
@@ -122,10 +131,16 @@ export default function ChatPage() {
     };
 
     const handleViewProfile = (userId: string) => {
-        console.log(`Simulating navigation to profile page for user ID: ${userId}`);
-        // In a real app, if a public profile page exists at /profile/[userId]:
+        // Check if the user ID is a mock ID or a real one if needed
+        // if (userId.startsWith('chat')) {
+        //     alert(`Cannot view profile for mock user ID: ${userId}`);
+        //     return;
+        // }
+        console.log(`Navigating to profile page for user ID: ${userId}`);
+        // Assuming profile page exists at /profile/[userId]
+        // If using mock IDs, this might lead to 404 unless handled
         // router.push(`/profile/${userId}`);
-        // If only the logged-in user's profile exists at /profile:
+        // For now, show alert as profile page structure might vary
         alert(`Profile view for user ${userId} not implemented yet.`);
     };
 
@@ -198,11 +213,14 @@ export default function ChatPage() {
                     <div className={`max-w-[70%] p-3 rounded-lg shadow-sm ${msg.sender === 'me' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
                         <p className="text-sm">{msg.text}</p>
                         <p className={`text-xs mt-1 ${msg.sender === 'me' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground text-right'}`}>
-                            {msg.timestamp instanceof Date ? msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            {/* Use the ChatTimestamp component */}
+                            <ChatTimestamp timestamp={msg.timestamp} />
                         </p>
                     </div>
                 </div>
                )) : (
+                   // Show loading or placeholder if client hasn't mounted or no messages yet
+                  !isClient ? <LoadingSpinner showText={false} className="h-8 w-8 mx-auto" /> :
                   <p className="text-sm text-muted-foreground text-center p-4">No messages in this chat yet. Start the conversation!</p>
                )}
             </ScrollArea>
