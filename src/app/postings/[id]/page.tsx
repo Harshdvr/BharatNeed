@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { IndianRupee, MapPin, MessageSquare, Phone, Share2, Tag, User, Heart } from "lucide-react"; // Added Heart
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from 'next/navigation'; // Using App Router hook, added useRouter
+import { usePathname, useRouter, useParams, useSearchParams } from 'next/navigation'; // Using App Router hooks
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { useAuthState } from 'react-firebase-hooks/auth'; // Import auth hook
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import Firebase instances
@@ -115,8 +115,10 @@ const getPostingDetails = async (id: string, db: typeof firestore | null, curren
 };
 
 
-export default function PostingDetailPage({ params }: { params: { id: string } }) {
-    const { id } = params; // Destructure id from params
+export default function PostingDetailPage() {
+    const params = useParams<{ id: string }>(); // Use hook for route params
+    const searchParams = useSearchParams(); // Use hook for search params
+    const id = params.id; // Extract id from params
     const pathname = usePathname();
     const { toast } = useToast();
     const router = useRouter();
@@ -128,6 +130,13 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
     const [showingPhone, setShowingPhone] = useState(false); // State for showing phone number
 
     useEffect(() => {
+        // Example of using searchParams safely
+        const source = searchParams.get('source');
+        if (source) {
+            console.log('Source:', source);
+        }
+
+
         const fetchDetails = async () => {
             setIsLoading(true);
             setError(null);
@@ -157,7 +166,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
 
 
             try {
-                // Pass current user's UID (or null if not logged in) and the destructured id
+                // Pass current user's UID (or null if not logged in) and the extracted id
                 const data = await getPostingDetails(id, firestore, user?.uid || null);
                 if (data) {
                     setPosting(data);
@@ -172,8 +181,14 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             }
         };
 
-        fetchDetails();
-    }, [id, user, authLoading, authError]); // Use destructured id in dependency array
+        // Only proceed if id is available
+        if (id) {
+          fetchDetails();
+        } else {
+             setError('Posting ID is missing.');
+             setIsLoading(false);
+        }
+    }, [id, user, authLoading, authError, searchParams]); // Add searchParams to dependency array
 
 
     const handleShare = () => {
@@ -219,7 +234,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         }
         if (!posting || user.uid === posting.sellerId) return; // Don't chat with self
 
-        // Navigate to chat page with context using the destructured id
+        // Navigate to chat page with context using the extracted id
         router.push(`/chat?userId=${posting.sellerId}&postId=${id}`);
         // toast({ description: "Chat functionality under development." });
      }
@@ -244,7 +259,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
         });
 
-        // Update Firestore using the destructured id
+        // Update Firestore using the extracted id
         try {
              const userDocRef = doc(firestore, 'users', user.uid);
              if (isCurrentlyFavorite) {
@@ -451,4 +466,3 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         </div>
     );
 }
-

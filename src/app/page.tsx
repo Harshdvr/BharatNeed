@@ -1,3 +1,4 @@
+
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs } from 'firebase/firestore'; // Import Firestore functions
+import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 
 // TODO: Remove placeholder postings and fetch actual data from Firestore
 const initialPostings: any[] = [
@@ -32,6 +34,7 @@ const categoryIcons: { [key: string]: React.ElementType } = {
   'Tuitions': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>, // Placeholder book icon
   'Jobs': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>, // Placeholder briefcase icon
   'Help': () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>, // Placeholder heart icon
+  'Other': Tag, // Added Other category
 };
 
 const getCategoryIcon = (category: string): React.ElementType => {
@@ -46,15 +49,25 @@ export default function Home() {
   const [currentPostings, setCurrentPostings] = useState<any[]>([]); // State for postings data
   const [isLoading, setIsLoading] = useState(true); // State for loading data
   const { toast } = useToast();
+  const searchParams = useSearchParams(); // Use hook for search params
 
   // Fetch postings data from Firestore in useEffect
   useEffect(() => {
+    // Example of using searchParams safely
+    const filter = searchParams.get('filter');
+    const sort = searchParams.get('sort');
+    if (filter || sort) {
+        console.log('Applying filters - Filter:', filter, 'Sort:', sort);
+        // Add logic here to fetch filtered/sorted data if needed
+    }
+
+
     const fetchPostings = async () => {
-        setIsLoading(true);
+        // No need to explicitly set isLoading here, handled by authLoading or initial fetch
         if (!firestore) {
             console.error("Firestore not initialized");
             toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
-            setIsLoading(false);
+            setIsLoading(false); // Set loading false on error
             return;
         }
         try {
@@ -74,11 +87,17 @@ export default function Home() {
             console.error("Error fetching postings:", error);
             toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Ensure loading is set to false after fetch completes or fails
         }
     };
-    fetchPostings();
-  }, [toast]); // Add dependencies if needed (e.g., filter criteria)
+
+    // Only fetch postings if Firestore is available (avoids errors during server render/init)
+    // Wait until auth state is also resolved to potentially check for user's favorites
+     if (!authLoading) {
+         fetchPostings();
+     }
+
+  }, [toast, authLoading, searchParams]); // Add dependencies: authLoading to refetch if user state changes, searchParams
 
 
   // Handle favoriting logic (Server Action updating Firestore)
@@ -136,14 +155,12 @@ export default function Home() {
   useEffect(() => {
     if (authError) {
       console.error("Firebase Auth Hook Error:", authError);
-      toast({
-        title: "Authentication Error",
-        description: authError.message || "Could not verify user.",
-        variant: "destructive",
-      });
+      // Avoid showing toast directly in header or global layout to prevent hydration issues
+      // Show error messages on specific pages or via dedicated notification system if needed
     }
   }, [authError, toast]);
 
+  // Show LoadingSpinner if either auth state or data fetching is in progress
   if (isLoading || authLoading) {
        return (
             <div className="flex justify-center items-center min-h-[60vh]">
@@ -205,6 +222,7 @@ export default function Home() {
                             fill
                             style={{ objectFit: 'cover' }}
                             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                            data-ai-hint="product service picture" /* Added AI hint */
                         />
                      </Link>
                     {/* Favorite Button Overlay */}
