@@ -8,15 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Edit, IndianRupee, MapPin, MoreVertical, Trash2, Tag, Clock, MessageSquare, Heart, Share2, Flag } from "lucide-react"; // Added Tag and other icons
+import { Edit, IndianRupee, MapPin, Tag, Clock, MessageSquare, Heart, Share2, Flag, ChevronLeft, ChevronRight } from "lucide-react"; // Added Chevron icons
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth, firestore, and helper
+import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp';
 import { useState } from 'react';
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'; // Import Firestore functions
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
+// Import Swiper styles - **NOTE: Requires `npm install swiper`**
+// import 'swiper/css';
+// import 'swiper/css/navigation';
+// import 'swiper/css/pagination';
+// Import Swiper React components - **NOTE: Requires `npm install swiper`**
+// import { Swiper, SwiperSlide } from 'swiper/react';
+// import { Navigation, Pagination } from 'swiper/modules';
 
 interface Posting {
     id: string;
@@ -26,15 +33,15 @@ interface Posting {
     location?: string;
     budget?: string;
     description?: string;
-    imageUrls?: string[]; // Assuming multiple images
-    canBid?: boolean; // Indicate if bidding is allowed
-    canNegotiate?: boolean; // Indicate if negotiation is allowed
+    imageUrls?: string[];
+    canBid?: boolean;
+    canNegotiate?: boolean;
     views?: number;
-    datePosted?: any; // Firestore Timestamp or Date
-    userId?: string; // Added userId field
-    createdAt?: any; // Firestore Timestamp
-    postType?: 'need' | 'offer'; // Added postType
-    urgency?: 'low' | 'medium' | 'high' | 'urgent'; // Added urgency
+    datePosted?: any;
+    userId?: string;
+    createdAt?: any;
+    postType?: 'need' | 'offer';
+    urgency?: 'low' | 'medium' | 'high' | 'urgent';
 }
 
 // Mock Data - Replace with actual data fetching
@@ -51,6 +58,7 @@ const ad: Posting = {
     'https://picsum.photos/seed/roofleak/800/600',
     'https://picsum.photos/seed/roofinside/800/600',
     'https://picsum.photos/seed/damageclose/800/600',
+    'https://picsum.photos/seed/anotherangle/800/600' // Added another image
   ],
   userId: 'userMock1',
   createdAt: new Date(Date.now() - 3600000 * 3), // 3 hours ago
@@ -63,30 +71,19 @@ const ad: Posting = {
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
     // TODO: Fetch actual ad data based on params.id
     // const { data: ad, isLoading, error } = useQuery(['posting', params.id], fetchPosting);
-    const [isLoading, setIsLoading] = useState(false); // Add loading state for async operations like bidding/negotiating
+    const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
-    const [user, authLoading] = useAuthState(auth); // Get current user state
-    const router = useRouter(); // Initialize router
-
-    /*
-    if (isLoading) {
-        return <LoadingSpinner />;
-    }
-
-    if (error || !ad) {
-        return <div>Error loading post or post not found.</div>;
-    }
-    */
+    const [user, authLoading] = useAuthState(auth);
+    const router = useRouter();
 
     // Convert Firestore timestamp if needed
     const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
 
-    // TODO: Implement handlers for bid, negotiate, favorite, share, report
+    // Handlers remain the same
     const handleBidSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsLoading(true);
         console.log("Submitting bid...");
-        // Add server action call here
         setTimeout(() => {
              toast({ description: "Bid submitted (Simulated)" });
              setIsLoading(false);
@@ -98,7 +95,6 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         e.preventDefault();
         setIsLoading(true);
         console.log("Sending offer...");
-        // Add server action call here
         setTimeout(() => {
              toast({ description: "Offer sent (Simulated)" });
              setIsLoading(false);
@@ -109,20 +105,27 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
      const handleToggleFavorite = () => {
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
         console.log("Toggling favorite...");
-        // Add server action call here
         toast({ description: "Favorite status toggled (Simulated)" });
      }
 
      const handleShare = () => {
-        console.log("Sharing...");
-        // Add share logic (navigator.share or copy link)
-        toast({ description: "Share functionality not implemented." });
+        if (navigator.share) {
+            navigator.share({
+                title: ad.title || 'Check out this listing on BharatNeed',
+                text: ad.description || 'Found this on BharatNeed!',
+                url: window.location.href,
+            })
+            .then(() => console.log('Successful share'))
+            .catch((error) => console.log('Error sharing', error));
+        } else {
+            navigator.clipboard.writeText(window.location.href);
+            toast({ description: "Link copied to clipboard!" });
+        }
      }
 
      const handleReport = () => {
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
         console.log("Reporting ad...");
-        // Add server action call here
         toast({ description: "Ad reported (Simulated)", variant: "destructive" });
      }
 
@@ -140,31 +143,82 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             return;
          }
          console.log("Redirecting to chat...");
-         // Redirect to chat page with seller ID and potentially posting ID
          router.push(`/chat?contact=${ad.userId}&post=${ad.id}`);
-         // toast({ description: "Chat functionality not implemented." }); // Removed placeholder toast
      }
 
 
     return (
         <div className="container mx-auto px-4 py-8">
-            {authLoading && <LoadingSpinner />} {/* Show spinner if auth state is loading */}
+            {authLoading && <LoadingSpinner />}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
-                    {/* Image Gallery */}
-                    <Card className="overflow-hidden shadow-md">
-                        <div className="relative aspect-[4/3] bg-muted">
-                            {/* Main Image - TODO: Implement image selection/carousel */}
-                            <Image
-                                src={ad.imageUrls?.[0] || 'https://picsum.photos/800/600'}
-                                alt={ad.title || 'Posting image'}
-                                fill
-                                style={{ objectFit: 'cover' }}
-                                priority
-                                data-ai-hint="posting detail image"
-                            />
-                             {/* Badge Overlay */}
+                    {/* Image Gallery - Using Swiper */}
+                    <Card className="overflow-hidden shadow-md relative group"> {/* Added group for navigation buttons */}
+                         {/* **NOTE: Requires `npm install swiper` and uncommenting imports above ** */}
+                         {/* <Swiper
+                            modules={[Navigation, Pagination]}
+                            spaceBetween={0}
+                            slidesPerView={1}
+                            navigation={{
+                                nextEl: '.swiper-button-next',
+                                prevEl: '.swiper-button-prev',
+                            }}
+                            pagination={{ clickable: true }}
+                            className="relative aspect-[4/3]"
+                        >
+                            {(ad.imageUrls && ad.imageUrls.length > 0) ? ad.imageUrls.map((url, index) => (
+                                <SwiperSlide key={index} className="bg-muted">
+                                    <Image
+                                        src={url}
+                                        alt={`${ad.title || 'Posting image'} ${index + 1}`}
+                                        fill
+                                        style={{ objectFit: 'cover' }}
+                                        priority={index === 0} // Prioritize first image
+                                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px"
+                                        data-ai-hint="posting detail image"
+                                    />
+                                </SwiperSlide>
+                            )) : (
+                                <SwiperSlide className="bg-muted flex items-center justify-center">
+                                     <Image
+                                        src={'https://picsum.photos/800/600'} // Default placeholder
+                                        alt={ad.title || 'Posting image'}
+                                        fill
+                                        style={{ objectFit: 'cover' }}
+                                        priority
+                                        data-ai-hint="posting detail image placeholder"
+                                    />
+                                </SwiperSlide>
+                            )} */}
+
+                            {/* --- Placeholder Structure (if Swiper is not installed) --- */}
+                            <div className="relative aspect-[4/3] bg-muted">
+                                <Image
+                                    src={ad.imageUrls?.[0] || 'https://picsum.photos/800/600'}
+                                    alt={ad.title || 'Posting image'}
+                                    fill
+                                    style={{ objectFit: 'cover' }}
+                                    priority
+                                    data-ai-hint="posting detail image"
+                                />
+                                {/* Simple static buttons for placeholder */}
+                                {ad.imageUrls && ad.imageUrls.length > 1 && (
+                                    <>
+                                        <Button variant="ghost" size="icon" className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground">
+                                            <ChevronLeft/>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground">
+                                            <ChevronRight/>
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                             <p className="text-center text-xs text-muted-foreground p-1">(Carousel/Swipe functionality requires 'swiper' installation)</p>
+                            {/* --- End Placeholder Structure --- */}
+
+
+                            {/* Badge Overlay (remains the same) */}
                              <div className="absolute top-2 left-2 z-10">
                                 <Badge
                                     variant={ad.postType === 'need' ? 'destructive' : 'default'}
@@ -173,24 +227,18 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                     {ad.postType === 'need' ? 'Need' : 'Offer'}
                                 </Badge>
                              </div>
-                        </div>
-                         {/* Thumbnails - TODO: Add carousel logic */}
-                         {ad.imageUrls && ad.imageUrls.length > 1 && (
-                            <div className="flex gap-2 p-2 border-t overflow-x-auto">
-                                {ad.imageUrls.map((url, index) => (
-                                    <div key={index} className="relative h-16 w-16 shrink-0 cursor-pointer border rounded hover:border-primary">
-                                         <Image
-                                            src={url}
-                                            alt={`Thumbnail ${index + 1}`}
-                                            fill
-                                            style={{ objectFit: 'cover' }}
-                                            className="rounded"
-                                            data-ai-hint="posting thumbnail"
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+
+                              {/* Swiper Navigation Buttons (requires swiper) */}
+                              {/* {ad.imageUrls && ad.imageUrls.length > 1 && (
+                                 <>
+                                    <Button variant="ghost" size="icon" className="swiper-button-prev absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <ChevronLeft/>
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="swiper-button-next absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <ChevronRight/>
+                                    </Button>
+                                 </>
+                             )} */}
                     </Card>
 
                     {/* Ad Details */}
@@ -200,7 +248,8 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground pt-2">
                                 <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {ad.location || 'N/A'}</span>
                                 <span className="flex items-center gap-1"><Tag className="h-4 w-4" /> {ad.category || 'N/A'}</span>
-                                <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> Posted {datePostedFormatted}</span>
+                                {/* Hiding date for now, as Swiper might cover it */}
+                                {/* <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> Posted {datePostedFormatted}</span> */}
                             </div>
                              <p className="font-semibold text-lg text-primary pt-2 flex items-center gap-1">
                                 <IndianRupee className="h-5 w-5" /> {ad.budget || 'N/A'}
@@ -210,6 +259,10 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                             <h3 className="text-lg font-semibold mb-2">Description</h3>
                             <p className="text-muted-foreground whitespace-pre-line">{ad.description || 'No description available.'}</p>
                         </CardContent>
+                         {/* Add Posted Date here if removed from header */}
+                         <CardFooter className="text-sm text-muted-foreground pt-4 border-t">
+                             <Clock className="h-4 w-4 mr-1.5"/> Posted {datePostedFormatted}
+                         </CardFooter>
                     </Card>
                 </div>
 
@@ -261,7 +314,6 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                      <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle>Poster Information</CardTitle>
-                            {/* Add placeholder for seller details */}
                             <CardDescription>Details about the person who posted this.</CardDescription>
                         </CardHeader>
                         <CardContent className="flex items-center gap-4">
@@ -272,14 +324,12 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                             <div>
                                 <p className="font-semibold">Seller Name (Mock)</p>
                                 <p className="text-xs text-muted-foreground">Member since Mock Date</p>
-                                {/* Optional: Add verification badge */}
                                 {/* <Badge variant="secondary" className="mt-1 text-xs"><UserCheck className="h-3 w-3 mr-1"/>Verified</Badge> */}
                             </div>
                         </CardContent>
-                         <CardFooter>
-                            {/* Optional: Link to seller's profile page */}
-                            {/* <Button variant="outline" size="sm" asChild><Link href={`/profile/${ad.userId}`}>View Profile</Link></Button> */}
-                        </CardFooter>
+                         {/* <CardFooter>
+                            <Button variant="outline" size="sm" asChild><Link href={`/profile/${ad.userId}`}>View Profile</Link></Button>
+                        </CardFooter> */}
                     </Card>
                 </div>
             </div>
