@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -128,12 +127,14 @@ export default function LoginPage() {
              window.loginRecaptchaVerifier.clear();
              console.log("Cleared window.loginRecaptchaVerifier");
           } catch (e) {
-             console.error("Error clearing window.loginRecaptchaVerifier:", e);
              // Avoid throwing errors from cleanup
              if (e instanceof Error && e.message.includes('auth/internal-error')) {
                 console.warn("Caught Firebase internal error during cleanup, likely already handled or verifier invalid.");
+             } else {
+               console.error("Error clearing window.loginRecaptchaVerifier:", e);
              }
           } finally {
+            // Ensure the property is cleared even if clear() throws
             window.loginRecaptchaVerifier = undefined;
           }
         }
