@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react'; // Import hooks
@@ -6,10 +7,8 @@ import LoadingSpinner from "@/components/loading-spinner"; // Keep spinner impor
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-// Removed unused Input and Label imports
 import { Separator } from "@/components/ui/separator";
-// Removed unused Textarea import
-import { Edit, Mail, MapPin, Phone, UserCheck } from "lucide-react";
+import { Edit, UserCheck, List, Heart, MessageSquare, Settings, ChevronRight } from "lucide-react"; // Import new icons
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
@@ -22,9 +21,9 @@ import { useRouter } from 'next/navigation'; // Import router
 interface UserProfile {
     uid: string;
     name: string;
-    email: string | null;
-    phone: string | null;
-    location?: string | null; // Made optional as it might not be in Firestore yet
+    email?: string | null; // Made optional
+    phone?: string | null; // Made optional
+    location?: string | null; // Made optional
     createdAt: any; // Firestore Timestamp or Date
     memberSince?: string; // Add memberSince derived property
     bio?: string | null; // Made optional
@@ -74,8 +73,8 @@ export default function ProfilePage() {
                         setUserProfile({
                             uid: user.uid,
                             name: data.name || user.displayName || 'Unnamed User',
-                            email: data.email !== undefined ? data.email : user.email, // Prefer Firestore email if explicitly set (even if null)
-                            phone: data.phone !== undefined ? data.phone : user.phoneNumber, // Prefer Firestore phone if explicitly set
+                            email: data.email !== undefined ? data.email : (user.email || null), // Prefer Firestore email if explicitly set (even if null)
+                            phone: data.phone !== undefined ? data.phone : (user.phoneNumber || null), // Prefer Firestore phone if explicitly set
                             location: data.location || null,
                             createdAt: data.createdAt || null, // Handle potentially missing createdAt
                             bio: data.bio || null,
@@ -143,79 +142,70 @@ export default function ProfilePage() {
 
     // Render profile only if userProfile is loaded and valid
     return (
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
-                <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-primary">
-                    <AvatarImage src={userProfile.avatarUrl || `https://avatar.vercel.sh/${userProfile.uid}.png`} alt={userProfile.name} />
-                    <AvatarFallback className="text-4xl">{userProfile.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
-                </Avatar>
-                <div className="flex-grow text-center sm:text-left">
-                    <h1 className="text-3xl font-bold">{userProfile.name}</h1>
-                    <p className="text-muted-foreground">Member since {userProfile.memberSince}</p>
-                    {userProfile.isVerified && (
-                        <Badge variant="secondary" className="mt-2">
-                            <UserCheck className="h-4 w-4 mr-1"/> Verified User
-                        </Badge>
-                    )}
-                     <Button variant="outline" size="sm" className="mt-3 ml-0 sm:ml-2" onClick={handleEditProfile}>
+        <div className="container mx-auto px-4 py-8 max-w-3xl"> {/* Reduced max width */}
+            {/* Top Profile Section */}
+            <Card className="mb-8 overflow-hidden shadow-md">
+                 <CardContent className="p-6 flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 border-4 border-primary">
+                        <AvatarImage src={userProfile.avatarUrl || `https://avatar.vercel.sh/${userProfile.uid}.png`} alt={userProfile.name} />
+                        <AvatarFallback className="text-3xl">{userProfile.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-grow text-center sm:text-left">
+                        <h1 className="text-2xl font-bold">{userProfile.name}</h1>
+                        <p className="text-muted-foreground text-sm">Member since {userProfile.memberSince}</p>
+                        {userProfile.isVerified && (
+                            <Badge variant="secondary" className="mt-2 text-xs">
+                                <UserCheck className="h-3 w-3 mr-1"/> Verified User
+                            </Badge>
+                        )}
+                    </div>
+                    <Button variant="outline" size="sm" className="mt-3 sm:mt-0 sm:ml-auto flex-shrink-0" onClick={handleEditProfile}>
                         <Edit className="h-4 w-4 mr-1" /> Edit Profile
                      </Button>
-                </div>
-                <div className="text-center sm:text-right flex-shrink-0 mt-4 sm:mt-0">
-                     <p className="text-lg font-semibold">{userProfile.activeAds ?? 0} / {userProfile.totalAds ?? 0}</p>
-                     <p className="text-sm text-muted-foreground">Active / Total Ads</p>
-                     <Button asChild className="mt-2">
-                        <Link href="/my-ads">View My Ads</Link>
-                     </Button>
-                </div>
-            </div>
+                 </CardContent>
+            </Card>
 
-            <Separator className="my-8" />
+            {/* Navigation Links Section */}
+            <Card className="shadow-md">
+                <CardContent className="p-0">
+                    <nav className="flex flex-col">
+                        <ProfileLink href="/my-ads" Icon={List} label="My Ads" />
+                        <Separator />
+                        <ProfileLink href="/favorites" Icon={Heart} label="Favorites" />
+                        <Separator />
+                        <ProfileLink href="/chat" Icon={MessageSquare} label="Chats" />
+                         <Separator />
+                        <ProfileLink href="/settings" Icon={Settings} label="Settings" />
+                    </nav>
+                </CardContent>
+            </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Contact Information */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Contact Information</CardTitle>
-                         <CardDescription>This information may be visible on your ads based on your privacy settings.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                         {userProfile.email && (
-                            <div className="flex items-center gap-3">
-                                <Mail className="h-5 w-5 text-muted-foreground"/>
-                                <span>{userProfile.email}</span>
-                            </div>
-                         )}
-                         {userProfile.phone && (
-                            <div className="flex items-center gap-3">
-                                <Phone className="h-5 w-5 text-muted-foreground"/>
-                                <span>{userProfile.phone}</span> {/* TODO: Add logic to show/hide based on privacy settings */}
-                            </div>
-                         )}
-                        {userProfile.location && (
-                            <div className="flex items-center gap-3">
-                                <MapPin className="h-5 w-5 text-muted-foreground"/>
-                                <span>{userProfile.location}</span>
-                            </div>
-                        )}
-                         {!userProfile.email && !userProfile.phone && !userProfile.location && (
-                            <p className="text-sm text-muted-foreground">No contact information provided. <Link href="/complete-profile" className='underline text-primary'>Edit Profile</Link></p>
-                         )}
-                    </CardContent>
-                </Card>
-
-                 {/* About Me & Age */}
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>About</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {userProfile.age && <p className="text-sm mb-2"><strong>Age:</strong> {userProfile.age}</p>}
-                        <p className="text-muted-foreground">{userProfile.bio || 'No bio provided.'}</p>
-                        {!userProfile.bio && <Link href="/complete-profile" className='text-sm underline text-primary mt-2 inline-block'>Add Bio</Link>}
-                    </CardContent>
-                </Card>
-            </div>
+             {/* Placeholder for Recent Activity or Stats if needed */}
+             {/*
+             <Card className="mt-8">
+                <CardHeader>
+                    <CardTitle>Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-muted-foreground">Recent activity section (optional).</p>
+                </CardContent>
+             </Card>
+             */}
         </div>
     );
 }
+
+
+// Helper component for profile navigation links
+function ProfileLink({ href, Icon, label }: { href: string, Icon: React.ElementType, label: string }) {
+    return (
+        <Link href={href} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group">
+            <div className="flex items-center gap-3">
+                <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary" />
+                <span className="text-base font-medium">{label}</span>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </Link>
+    );
+}
+
