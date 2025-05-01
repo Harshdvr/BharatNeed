@@ -1,3 +1,4 @@
+
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect } from 'react';
@@ -26,27 +27,29 @@ const mockPostings = [
     description: 'My kitchen sink pipe burst this morning. Need a plumber immediately in Koramangala, Bangalore. Please quote.',
     category: 'services',
     postType: 'need',
-    location: 'Koramangala, Bangalore',
-    budget: 'Budget: ₹2,000', // Changed format to match image
+    location: 'Koramangala, Bangalore', // Closer location
+    budget: 'Budget: ₹2,000',
     urgency: 'urgent',
     imageUrls: ['https://picsum.photos/seed/plumberleak/300/200'],
-    createdAt: new Date(Date.now() - 3600000), // 1 hour ago
+    createdAt: new Date(Date.now() - 3600000), // 1 hour ago (Recent)
     isFavorite: false,
-    featured: true, // Added featured flag
+    // featured: true, // Removed featured for OLX-like sorting
+    views: 10, // Example engagement
   },
   {
     id: 'mock2',
     title: 'Authentic Punjabi Tiffin Service - Daily Delivery',
     description: 'Home-cooked Punjabi meals (Veg/Non-Veg options) delivered daily across South Delhi. Hygienic & Tasty. Monthly plans available.',
-    category: 'services', // Or maybe Buy/Sell? Using Services based on description
+    category: 'services',
     postType: 'offer',
-    location: 'South Delhi, Delhi',
-    budget: '₹130', // Changed format
+    location: 'South Delhi, Delhi', // Further location
+    budget: '₹130',
     urgency: 'low',
     imageUrls: ['https://picsum.photos/seed/tiffin/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 4), // 4 days ago
     isFavorite: false,
-    featured: true,
+    // featured: true,
+    views: 50,
   },
   {
     id: 'mock3',
@@ -55,26 +58,28 @@ const mockPostings = [
     category: 'buy/sell',
     postType: 'offer',
     location: 'Jaipur, Rajasthan',
-    budget: '₹250', // Changed format
+    budget: '₹250',
     urgency: 'medium',
     imageUrls: ['https://picsum.photos/seed/terracotta/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
     isFavorite: false,
-    featured: true,
+    // featured: true,
+    views: 30,
   },
     {
     id: 'mock4',
     title: 'Fresh Organic Mangoes - Direct from Farm (Ratnagiri)',
     description: 'Order delicious, naturally ripened Alphonso mangoes directly from our farm in Ratnagiri. Minimum order 1 dozen.',
-    category: 'farming', // Or Buy/Sell
+    category: 'farming',
     postType: 'offer',
     location: 'Ratnagiri, Maharashtra',
-    budget: '₹1,500', // Changed format (per dozen implied)
+    budget: '₹1,500',
     urgency: 'low',
     imageUrls: ['https://picsum.photos/seed/mangoes/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago (changed to be not 'new')
+    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
     isFavorite: false,
-    featured: true,
+    // featured: true,
+    views: 80, // Higher views
   },
    // Add mock data for Recently Viewed - can duplicate or add new ones
    {
@@ -83,13 +88,14 @@ const mockPostings = [
     description: 'Selling my Firefox MTB, 1 year old. Serviced regularly. Good condition, minor scratches. Selling as I upgraded.',
     category: 'buy/sell',
     postType: 'offer',
-    location: 'Mumbai, Maharashtra',
+    location: 'Mumbai, Maharashtra', // Assume user is in Mumbai for this example
     budget: '₹8,500',
     urgency: 'low',
     imageUrls: ['https://picsum.photos/seed/mtbbike/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
+    createdAt: new Date(Date.now() - 86400000 * 7),
     isFavorite: false,
     recentlyViewed: true, // Flag for this section
+    views: 25,
   },
    {
     id: 'mock6',
@@ -101,9 +107,10 @@ const mockPostings = [
     budget: 'Budget: ₹7,000',
     urgency: 'medium',
     imageUrls: ['https://picsum.photos/seed/washingmachine/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+    createdAt: new Date(Date.now() - 86400000 * 2),
     isFavorite: false,
      recentlyViewed: true,
+     views: 40,
   },
    {
     id: 'mock7',
@@ -112,99 +119,103 @@ const mockPostings = [
     category: 'farming',
     postType: 'need',
     location: 'Near Ludhiana, Punjab',
-    budget: 'Budget: ₹600', // Assuming per day
+    budget: 'Budget: ₹600',
     urgency: 'high',
     imageUrls: ['https://picsum.photos/seed/paddyfarm/300/200'],
-    createdAt: new Date(Date.now() - 86400000 * 3), // 3 days ago
+    createdAt: new Date(Date.now() - 86400000 * 3),
     isFavorite: false,
      recentlyViewed: true,
+     views: 15,
   },
-   { // Duplicating tiffin for recently viewed
+   { // Duplicating plumber for recently viewed, assume user viewed it
     id: 'mock8',
-    title: 'Authentic Punjabi Tiffin Service - Daily Delivery',
-    description: 'Home-cooked Punjabi meals (Veg/Non-Veg options) delivered daily across South Delhi. Hygienic & Tasty. Monthly plans available.',
+    title: 'Urgent Plumber Needed for Kitchen Sink Leak',
+    description: 'My kitchen sink pipe burst this morning. Need a plumber immediately in Koramangala, Bangalore. Please quote.',
     category: 'services',
-    postType: 'offer',
-    location: 'South Delhi, Delhi',
-    budget: '₹130',
-    urgency: 'low',
-    imageUrls: ['https://picsum.photos/seed/tiffin2/300/200'], // Use different seed for image
-    createdAt: new Date(Date.now() - 86400000 * 4), // 4 days ago
+    postType: 'need',
+    location: 'Koramangala, Bangalore',
+    budget: 'Budget: ₹2,000',
+    urgency: 'urgent',
+    imageUrls: ['https://picsum.photos/seed/plumberleak2/300/200'], // Different image seed
+    createdAt: new Date(Date.now() - 3600000), // 1 hour ago
     isFavorite: false,
      recentlyViewed: true,
+     views: 10,
   },
 ];
 
 
-// --- Simplified Feed Algorithm ---
+// --- Simplified OLX-like Feed Algorithm ---
 
 // Mock User Data (Replace with actual data fetching)
-const mockUserPreferences = {
-  categories: ['services', 'farming'], // Example preferences
-  keywords: ['repair', 'organic'], // Example keywords
-};
-const mockUserLocation = null; // Replace with actual location logic if available
+const mockUserLocation = "Koramangala, Bangalore"; // Example user location
 
-// Scoring Function (Simplified based on prompt)
-const calculateScore = (post: any, preferences: typeof mockUserPreferences): number => {
+// Simplified Proximity Check (Replace with actual distance calculation)
+const isNearby = (postLocation: string | undefined, userLocation: string | null, radiusKm: number = 15): boolean => {
+  if (!postLocation || !userLocation) return false;
+  // VERY basic check for demo purposes - replace with Haversine formula or GeoFirestore query
+  return postLocation.toLowerCase().includes(userLocation.split(',')[0].toLowerCase());
+};
+
+
+// Updated Scoring Function (OLX-like priorities)
+const calculateScore = (post: any, userLocation: string | null): number => {
   let score = 0;
   const now = new Date();
-  // Ensure createdAt is a Date object for comparison
   const postDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date();
   const hoursSincePost = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60);
 
-  // Category Match Bonus (Weight: 5)
-  if (preferences.categories.includes(post.category?.toLowerCase())) {
-    score += 5;
+  // 1. Proximity Bonus (Highest Weight: 7) - Using basic nearby check
+  if (isNearby(post.location, userLocation)) {
+    score += 7;
   }
 
-  // Keyword Match Bonus (simple title check) (Weight: 3)
-  if (preferences.keywords.some(keyword => post.title?.toLowerCase().includes(keyword))) {
-    score += 3;
-  }
-
-  // Trending Bonus (using 'featured' flag as proxy) (Weight: 4)
-  if (post.featured) {
-    score += 4;
-  }
-
-  // Recency Bonus (Higher score for newer posts) (Weight: 2)
+  // 2. Recency Bonus (Weight: 3)
   if (hoursSincePost <= 24) { // Within 1 day
-    score += 2; // Max recency bonus
+    score += 3;
   } else if (hoursSincePost <= 72) { // Within 3 days
-    score += 1; // Medium recency bonus
+    score += 1.5;
   }
   // Older posts get 0 recency bonus
 
-  // Proximity Bonus (Placeholder - cannot calculate with mock strings)
-  // if (isNearby(post.location, userLocation)) { score += 4; }
-
-  // Image Bonus (Weight: 1)
+  // 3. Image Bonus (Weight: 2) - OLX prioritizes posts with images
   if (post.imageUrls && post.imageUrls.length > 0) {
-    score += 1;
+    score += 2;
   }
+
+  // 4. Engagement Bonus (Optional, lower weight: 1) - Simple view count example
+   score += Math.min((post.views || 0) / 50, 1); // Add up to 1 point based on views (capped)
+
+  // Removed category/keyword match for simplicity, aligning closer to OLX's location/recency focus
 
   return score;
 };
 
-// Function to get the personalized feed (Simplified for mock data)
+// Function to get the personalized feed (OLX-like sorting)
 const getPersonalizedFeed = (
   allPosts: any[],
-  preferences: typeof mockUserPreferences,
+  userLocation: string | null,
   limit: number = 20
 ): any[] => {
   const scoredPosts = allPosts
     .filter(post => !post.recentlyViewed) // Exclude recently viewed for the main feed
     .map(post => ({
       ...post,
-      score: calculateScore(post, preferences),
-      // Mark as recent if within 48 hours (for the 'New' badge)
-      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date()).getTime()) / (1000 * 60 * 60) <= 48
+      score: calculateScore(post, userLocation),
+      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date()).getTime()) / (1000 * 60 * 60) <= 48, // Within 48 hours for 'New' badge
+      isNearby: isNearby(post.location, userLocation) // Add nearby flag for badge
     }))
-    .sort((a, b) => b.score - a.score); // Sort by score descending
+    .sort((a, b) => {
+        // Primary sort: score descending
+        if (b.score !== a.score) {
+            return b.score - a.score;
+        }
+        // Secondary sort: recency descending (newer first) if scores are equal
+        const dateA = a.createdAt instanceof Date ? a.createdAt : a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+        const dateB = b.createdAt instanceof Date ? b.createdAt : b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+        return dateB.getTime() - dateA.getTime();
+    });
 
-  // Simple mixing: Take top scored posts. A real implementation would use the 40/30/30 logic.
-  // For mock data, sorting by score and applying limit is sufficient.
   return scoredPosts.slice(0, limit);
 };
 
@@ -219,6 +230,7 @@ export default function Home() {
   const searchParams = useSearchParams();
   const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock data
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [currentUserLocation, setCurrentUserLocation] = useState<string | null>(mockUserLocation); // Use mock location for now
 
   // State for the different feed sections
   const [personalizedFeed, setPersonalizedFeed] = useState<any[]>([]);
@@ -238,7 +250,9 @@ export default function Home() {
   useEffect(() => {
     // ... Firestore data fetching logic ...
     // Inside fetchData, after getting posts and favs:
-    // const feed = getPersonalizedFeed(fetchedPostingsWithFavorites, mockUserPreferences); // Use the algorithm
+    // const userLoc = await getUserLocationFromProfileOrDevice(); // Fetch actual user location
+    // setCurrentUserLocation(userLoc);
+    // const feed = getPersonalizedFeed(fetchedPostingsWithFavorites, userLoc); // Use the algorithm
     // setPersonalizedFeed(feed);
     // setRecentlyViewedPostings(fetchedPostingsWithFavorites.filter(p => p.recentlyViewed)); // Filter for recently viewed
 
@@ -246,23 +260,27 @@ export default function Home() {
   */
   // --- End of commented out Firestore fetching logic ---
 
-  // Apply algorithm to mock data on initial load and when category changes
+  // Apply algorithm to mock data on initial load and when category/location changes
   useEffect(() => {
     setIsLoading(true);
     // Simulate fetching and processing
     setTimeout(() => {
-      const filteredMockPosts = selectedCategory
+      // Filter by category if selected
+      let filteredMockPosts = selectedCategory
         ? mockPostings.filter(p => p.category?.toLowerCase() === selectedCategory)
         : mockPostings;
 
-      const feed = getPersonalizedFeed(filteredMockPosts, mockUserPreferences);
+      // Apply OLX-like feed algorithm
+      const feed = getPersonalizedFeed(filteredMockPosts, currentUserLocation);
       setPersonalizedFeed(feed);
-      // Sort recently viewed separately by date
+
+      // Sort recently viewed separately by date (no scoring needed here)
       setRecentlyViewedPostings(filteredMockPosts.filter(p => p.recentlyViewed).sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : b.createdAt?.toDate ? b.createdAt.toDate() : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : a.createdAt?.toDate ? a.createdAt.toDate() : new Date()).getTime()));
+
       setIsLoading(false);
     }, 500); // Simulate network delay
 
-  }, [selectedCategory]); // Re-run when category changes
+  }, [selectedCategory, currentUserLocation]); // Re-run when category or location changes
 
 
   // Handle favoriting logic (Simulated for mock data)
@@ -451,6 +469,8 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
 
      // Check if the post is recent (using the flag from the algorithm)
      const isNew = post.isRecent;
+     // Check if the post is nearby (using the flag from the algorithm)
+     const isNearby = post.isNearby;
 
 
     return (
@@ -469,13 +489,18 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
                     />
                 </Link>
                  {/* Badges Overlay */}
-                 <div className="absolute top-2 left-2 flex gap-1.5 z-10">
+                 <div className="absolute top-2 left-2 flex flex-wrap gap-1.5 z-10"> {/* Added flex-wrap */}
                     <Badge variant={typeBadgeVariant} className="text-xs py-0.5 px-1.5 rounded-sm shadow"> {/* Added shadow */}
                        {typeBadgeText}
                     </Badge>
                     {isNew && !isRecentlyViewed && ( // Show 'New' badge only if recent and not in 'Recently Viewed'
                          <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-green-500 text-white"> {/* Custom 'New' badge style */}
                             New
+                        </Badge>
+                     )}
+                     {isNearby && !isRecentlyViewed && ( // Show 'Nearby' badge
+                         <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-blue-500 text-white"> {/* Custom 'Nearby' badge style */}
+                           <MapPin className="inline h-3 w-3 mr-0.5"/> Nearby
                         </Badge>
                      )}
                      {/* Keep featured badge logic if needed */}
@@ -519,3 +544,5 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
         </Card>
     );
 }
+
+    
