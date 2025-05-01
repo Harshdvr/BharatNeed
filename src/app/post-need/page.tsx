@@ -1,25 +1,26 @@
 
-'use client'; // Need client component for state, hooks
+'use client';
 
-import { useState, useEffect, useRef } from 'react'; // Import useState, useEffect, useRef
+import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import LoadingSpinner from "@/components/loading-spinner"; // Keep spinner import
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import LoadingSpinner from "@/components/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from '@/hooks/use-toast'; // Import useToast
-import { handlePostSubmitAction } from '@/actions/postActions'; // Import the server action
-import { useAuthState } from 'react-firebase-hooks/auth'; // Import auth hook
-import { auth } from '@/lib/firebase/clientApp'; // Import auth instance
-import { useRouter } from 'next/navigation'; // Import router for redirection
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Import Dialog components
+import { useToast } from '@/hooks/use-toast';
+import { handlePostSubmitAction } from '@/actions/postActions';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth } from '@/lib/firebase/clientApp';
+import { useRouter } from 'next/navigation';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import Image from 'next/image';
-import { IndianRupee, MapPin, Tag, Clock } from 'lucide-react'; // Import icons for preview
+import { IndianRupee, MapPin, Tag, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-// Define type for preview data
-interface PreviewData {
+// Define type for form data across steps
+interface FormDataState {
     postType: string;
     title: string;
     category: string;
@@ -27,22 +28,43 @@ interface PreviewData {
     location: string;
     budget: string;
     urgency: string;
-    imageUrls: string[]; // Store temporary image URLs for preview
-    formData?: FormData; // Store original FormData for submission
+    imageFiles: File[];
 }
 
+// Define type for preview data
+interface PreviewData extends Omit<FormDataState, 'imageFiles'> {
+    imageUrls: string[];
+    originalFormData?: FormData; // To pass to server action
+}
+
+const steps = [
+    { id: 1, name: 'Details', fields: ['postType', 'title', 'category', 'description'] },
+    { id: 2, name: 'Location & Value', fields: ['location', 'budget', 'urgency'] },
+    { id: 3, name: 'Media', fields: ['imageFiles'] },
+    { id: 4, name: 'Preview' } // Preview step
+];
 
 export default function PostNeedPage() {
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-    const [loading, setLoading] = useState(false); // State for form submission loading
-    const [isPreviewing, setIsPreviewing] = useState(false); // State for preview mode
-    const [previewData, setPreviewData] = useState<PreviewData | null>(null); // State to hold data for preview
+    const [loading, setLoading] = useState(false);
+    const [isPreviewing, setIsPreviewing] = useState(false);
+    const [previewData, setPreviewData] = useState<PreviewData | null>(null);
     const { toast } = useToast();
     const router = useRouter();
-    const fileInputRef = useRef<HTMLInputElement>(null); // Ref for file input
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [currentStep, setCurrentStep] = useState(1);
+    const [formData, setFormData] = useState<FormDataState>({
+        postType: '',
+        title: '',
+        category: '',
+        description: '',
+        location: '',
+        budget: '',
+        urgency: '',
+        imageFiles: [],
+    });
 
-
-     // Redirect unauthenticated users
+    // Redirect unauthenticated users
      useEffect(() => {
         if (!authLoading && !user) {
             toast({
@@ -52,7 +74,6 @@ export default function PostNeedPage() {
             });
             router.push('/login');
         }
-        // Handle auth errors during initial check
         if (authError) {
             console.error("Firebase Auth Hook Error:", authError);
             toast({
@@ -60,136 +81,180 @@ export default function PostNeedPage() {
               description: authError.message || "Could not verify user.",
               variant: "destructive",
             });
-            router.push('/login'); // Redirect on auth error too
+            router.push('/login');
         }
     }, [user, authLoading, authError, router, toast]);
 
-
-    // Placeholder for categories and urgencies
     const categories = ["Services", "Buy/Sell", "Jobs", "Farming", "Tuitions", "Help", "Other"];
     const urgencies = ["Low", "Medium", "High", "Urgent"];
 
-     // Client-side handler to initiate preview
-    const handlePreviewSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (!user) { // Double check user exists before previewing
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSelectChange = (name: keyof FormDataState, value: string) => {
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const files = Array.from(e.target.files);
+            if (files.length > 10) {
+                toast({
+                    title: "Too many files",
+                    description: "You can upload a maximum of 10 images.",
+                    variant: "destructive"
+                });
+                if (fileInputRef.current) fileInputRef.current.value = ""; // Clear selection
+                setFormData(prev => ({ ...prev, imageFiles: [] }));
+            } else if (files.some(file => file.size > 5 * 1024 * 1024)) { // Check for size > 5MB
+                 toast({
+                     title: "File too large",
+                     description: "Each image must be 5MB or less.",
+                     variant: "destructive"
+                 });
+                 if (fileInputRef.current) fileInputRef.current.value = ""; // Clear selection
+                 setFormData(prev => ({ ...prev, imageFiles: [] }));
+             } else {
+                setFormData(prev => ({ ...prev, imageFiles: files }));
+            }
+        }
+    };
+
+    const validateStep = (step: number): boolean => {
+        const currentStepFields = steps.find(s => s.id === step)?.fields || [];
+        for (const field of currentStepFields) {
+            if (field === 'imageFiles') {
+                if (formData.imageFiles.length === 0) {
+                    toast({ title: "Missing Image", description: "Please upload at least one image.", variant: "destructive" });
+                    return false;
+                }
+                 if (formData.imageFiles.length > 10) {
+                     toast({ title: "Too Many Images", description: "Maximum 10 images allowed.", variant: "destructive" });
+                     return false;
+                 }
+                 if (formData.imageFiles.some(f => f.size > 5 * 1024 * 1024)) {
+                      toast({ title: "Image Too Large", description: "Maximum 5MB per image.", variant: "destructive" });
+                      return false;
+                 }
+            } else if (!formData[field as keyof FormDataState]) {
+                toast({ title: "Missing Field", description: `Please fill in the '${field}' field.`, variant: "destructive" });
+                return false;
+            }
+        }
+        return true;
+    };
+
+
+    const nextStep = () => {
+        if (validateStep(currentStep)) {
+            if (currentStep < steps.length -1 ) { // Don't increment if on last form step
+                 setCurrentStep(prev => prev + 1);
+            } else if (currentStep === steps.length - 1) { // If on last form step, trigger preview
+                handlePreview();
+            }
+        }
+    };
+
+    const prevStep = () => {
+        if (currentStep > 1) {
+            setCurrentStep(prev => prev - 1);
+        }
+    };
+
+     // Handler to prepare and show preview
+    const handlePreview = () => {
+         if (!user) {
             toast({ title: "Error", description: "You must be logged in.", variant: "destructive" });
             return;
         }
-
-        const formData = new FormData(event.currentTarget);
-        const imageFiles = Array.from(formData.getAll('image') as File[]);
-
-         // Basic client-side validation (mirroring required fields)
-         const postType = formData.get('post-type') as string;
-         const title = formData.get('title') as string;
-         const category = formData.get('category') as string;
-         const description = formData.get('description') as string;
-         const location = formData.get('location') as string;
-         const budget = formData.get('budget') as string;
-         const urgency = formData.get('urgency') as string;
-
-         if (!postType || !title || !category || !description || !location || !budget || !urgency || imageFiles.length === 0) {
-             toast({ title: "Missing Fields", description: "Please fill all required fields (*) and upload at least one image.", variant: "destructive" });
+         if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+             toast({ title: "Incomplete Form", description: "Please complete all required fields in previous steps.", variant: "destructive" });
+             // Optionally navigate back to the first invalid step
+             if (!validateStep(1)) setCurrentStep(1);
+             else if (!validateStep(2)) setCurrentStep(2);
+             else if (!validateStep(3)) setCurrentStep(3);
              return;
          }
-          if (imageFiles.some(file => file.size === 0)) {
-             toast({ title: "Invalid Image", description: "One or more selected image files are empty.", variant: "destructive" });
-             return;
-         }
-         if (imageFiles.length > 10) {
-              toast({
-                  title: "Too many files",
-                  description: "You can upload a maximum of 10 images.",
-                  variant: "destructive"
-              });
-              return;
-          }
 
+        const imageUrls = formData.imageFiles.map(file => URL.createObjectURL(file));
 
-        // Create temporary URLs for image previews
-        const imageUrls = imageFiles.map(file => URL.createObjectURL(file));
+        // Create FormData for server action submission
+        const submissionFormData = new FormData();
+        submissionFormData.append('post-type', formData.postType);
+        submissionFormData.append('title', formData.title);
+        submissionFormData.append('category', formData.category);
+        submissionFormData.append('description', formData.description);
+        submissionFormData.append('location', formData.location);
+        submissionFormData.append('budget', formData.budget);
+        submissionFormData.append('urgency', formData.urgency);
+        formData.imageFiles.forEach(file => {
+            submissionFormData.append('image', file); // Use 'image' key multiple times
+        });
+
 
         setPreviewData({
-            postType: postType || 'N/A',
-            title: title || 'N/A',
-            category: category || 'N/A',
-            description: description || 'N/A',
-            location: location || 'N/A',
-            budget: budget || 'N/A',
-            urgency: urgency || 'N/A',
+            postType: formData.postType,
+            title: formData.title,
+            category: formData.category,
+            description: formData.description,
+            location: formData.location,
+            budget: formData.budget,
+            urgency: formData.urgency,
             imageUrls: imageUrls,
-            formData: formData, // Store the original form data
+            originalFormData: submissionFormData, // Store FormData for final submit
         });
         setIsPreviewing(true); // Open the preview dialog
     };
 
     // Handler for final post confirmation from preview
     const handleConfirmPost = async () => {
-        if (!previewData?.formData) {
+        if (!previewData?.originalFormData) {
             toast({ title: "Error", description: "No data to submit.", variant: "destructive" });
             setIsPreviewing(false);
             return;
         }
         setLoading(true);
-        setIsPreviewing(false); // Close dialog immediately, show loading state
+        setIsPreviewing(false); // Close dialog
 
-        // Call the imported server action with the stored FormData
-        const result = await handlePostSubmitAction(previewData.formData);
+        const result = await handlePostSubmitAction(previewData.originalFormData);
 
         setLoading(false);
 
-        // Revoke temporary image URLs after submission attempt
-        previewData.imageUrls.forEach(url => URL.revokeObjectURL(url));
+        previewData.imageUrls.forEach(url => URL.revokeObjectURL(url)); // Clean up blob URLs
 
         if (result?.success) {
             toast({ title: "Post Submitted!", description: "Your need/offer has been posted." });
-             // Reset form state after successful submission
-             setPreviewData(null);
-             if (fileInputRef.current) {
-                 fileInputRef.current.value = ""; // Clear file input
-             }
-             // TODO: Consider resetting other form fields if needed, or use react-hook-form's reset
-             // For now, redirecting might be simpler
-             router.push('/'); // Redirect to home after successful post
+            setFormData({ // Reset form state
+                 postType: '', title: '', category: '', description: '',
+                 location: '', budget: '', urgency: '', imageFiles: [],
+            });
+            setCurrentStep(1); // Go back to first step
+             if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
+            router.push('/'); // Redirect home
         } else {
             toast({ title: "Error", description: result?.error || "Could not submit post.", variant: "destructive" });
-            // Keep preview data in case user wants to try again (or potentially re-open preview?)
-            // For simplicity, we just close the dialog and show error. User needs to click preview again.
             setPreviewData(null); // Clear preview data on error
         }
     };
 
      const handleEditFromPreview = () => {
         setIsPreviewing(false);
-        // Optionally revoke URLs immediately if editing
-        // previewData?.imageUrls.forEach(url => URL.revokeObjectURL(url));
-        // setPreviewData(null); // Keep data in form, just close dialog
+        previewData?.imageUrls.forEach(url => URL.revokeObjectURL(url)); // Clean up blob URLs
+        setPreviewData(null); // Clear preview data, keep form state
+        setCurrentStep(3); // Go back to the last step (Media) for editing
      };
 
-    // Show loading spinner while auth state is being determined
      if (authLoading) {
-        return (
-            <div className="flex justify-center items-center min-h-[60vh]">
-                <LoadingSpinner />
-            </div>
-        );
-    }
-
-     // If user is null after loading (should have been redirected, but as a fallback)
+        return <div className="flex justify-center items-center min-h-[60vh]"><LoadingSpinner /></div>;
+     }
      if (!user) {
-        return (
-             <div className="flex justify-center items-center min-h-[60vh]">
-                 <p className="text-muted-foreground">Redirecting to login...</p>
-             </div>
-        );
+        return <div className="flex justify-center items-center min-h-[60vh]"><p className="text-muted-foreground">Redirecting to login...</p></div>;
      }
 
-
-    // Render the form only if user is authenticated and not loading
     return (
         <div className="max-w-2xl mx-auto relative">
-            {/* Main Loading Spinner for submission */}
             {loading && (
                 <div className="fixed inset-0 flex items-center justify-center bg-background/80 z-50">
                     <LoadingSpinner />
@@ -197,113 +262,125 @@ export default function PostNeedPage() {
             )}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-2xl">Post Your Need or Offer</CardTitle>
-                    <CardDescription>Fill in the details below to connect with the community.</CardDescription>
+                    <CardTitle className="text-2xl">Create New Post ({currentStep}/{steps.length - 1})</CardTitle>
+                    <CardDescription>{steps.find(s => s.id === currentStep)?.name || 'Review'}</CardDescription>
+                     {/* Progress Indicator (Optional) */}
+                     <div className="flex space-x-2 mt-2">
+                        {steps.slice(0, -1).map((stepInfo) => (
+                             <div key={stepInfo.id} className={cn("h-2 flex-1 rounded-full", currentStep >= stepInfo.id ? 'bg-primary' : 'bg-muted')}></div>
+                        ))}
+                     </div>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handlePreviewSubmit} className="space-y-6">
-                         {/* Post Type Selection */}
-                        <div className="space-y-2">
-                            <Label htmlFor="post-type">I want to... *</Label>
-                            <Select name="post-type" required disabled={loading}>
-                                <SelectTrigger id="post-type">
-                                    <SelectValue placeholder="Select if you need something or offering something" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="need">Post a Need (I need help/product/service)</SelectItem>
-                                    <SelectItem value="offer">Post an Offer (I can provide help/product/service)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    <form onSubmit={(e) => e.preventDefault()} className="space-y-6"> {/* Prevent default submit */}
 
-                        {/* Title */}
-                        <div className="space-y-2">
-                            <Label htmlFor="title">Title *</Label>
-                            <Input id="title" name="title" placeholder="E.g., Need Electrician, Offering Homemade Snacks" required disabled={loading}/>
-                        </div>
+                        {/* Step 1: Details */}
+                        {currentStep === 1 && (
+                             <>
+                                <div className="space-y-2">
+                                    <Label>I want to... *</Label>
+                                     <Select name="postType" required onValueChange={(value) => handleSelectChange('postType', value)} value={formData.postType} disabled={loading}>
+                                        <SelectTrigger><SelectValue placeholder="Select if you need or offer something" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="need">Post a Need (I need help/product/service)</SelectItem>
+                                            <SelectItem value="offer">Post an Offer (I can provide help/product/service)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="title">Title *</Label>
+                                    <Input id="title" name="title" placeholder="E.g., Need Electrician, Offering Homemade Snacks" required value={formData.title} onChange={handleInputChange} disabled={loading}/>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="category">Category *</Label>
+                                    <Select name="category" required onValueChange={(value) => handleSelectChange('category', value)} value={formData.category} disabled={loading}>
+                                        <SelectTrigger id="category"><SelectValue placeholder="Select a category" /></SelectTrigger>
+                                        <SelectContent>
+                                            {categories.map(category => (
+                                                <SelectItem key={category} value={category.toLowerCase()}>{category}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                 <div className="space-y-2">
+                                    <Label htmlFor="description">Description *</Label>
+                                    <Textarea id="description" name="description" placeholder="Provide more details..." required value={formData.description} onChange={handleInputChange} disabled={loading}/>
+                                </div>
+                             </>
+                        )}
 
-                         {/* Category */}
-                        <div className="space-y-2">
-                            <Label htmlFor="category">Category *</Label>
-                            <Select name="category" required disabled={loading}>
-                                <SelectTrigger id="category">
-                                    <SelectValue placeholder="Select a category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {categories.map(category => (
-                                        <SelectItem key={category} value={category.toLowerCase()}>{category}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        {/* Step 2: Location & Value */}
+                        {currentStep === 2 && (
+                            <>
+                               <div className="space-y-2">
+                                    <Label htmlFor="location">Location *</Label>
+                                    <Input id="location" name="location" placeholder="E.g., Your City, State or 'Remote'" required value={formData.location} onChange={handleInputChange} disabled={loading}/>
+                                     <p className="text-xs text-muted-foreground">Be specific if location matters, or type 'Remote'.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="budget">Budget / Price *</Label>
+                                    <Input id="budget" name="budget" placeholder="E.g., ₹500, Negotiable, Free, Daily Wage" required value={formData.budget} onChange={handleInputChange} disabled={loading}/>
+                                     <p className="text-xs text-muted-foreground">Enter amount, range, or terms like 'Negotiable'.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="urgency">Urgency *</Label>
+                                    <Select name="urgency" required onValueChange={(value) => handleSelectChange('urgency', value)} value={formData.urgency} disabled={loading}>
+                                        <SelectTrigger id="urgency"><SelectValue placeholder="Select urgency level" /></SelectTrigger>
+                                        <SelectContent>
+                                             {urgencies.map(urgency => (
+                                                <SelectItem key={urgency} value={urgency.toLowerCase()}>{urgency}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </>
+                        )}
 
-                         {/* Description */}
-                        <div className="space-y-2">
-                            <Label htmlFor="description">Description *</Label>
-                            <Textarea id="description" name="description" placeholder="Provide more details about your need or offer..." required disabled={loading}/>
-                        </div>
-
-                        {/* Location */}
-                         <div className="space-y-2">
-                            <Label htmlFor="location">Location *</Label>
-                            <Input id="location" name="location" placeholder="E.g., Your City, State or 'Remote'" required disabled={loading}/>
-                             <p className="text-xs text-muted-foreground">Be specific if location matters, or type 'Remote' if it doesn't.</p>
-                        </div>
-
-                        {/* Budget */}
-                        <div className="space-y-2">
-                            <Label htmlFor="budget">Budget / Price *</Label>
-                            <Input id="budget" name="budget" placeholder="E.g., ₹500, Negotiable, Free, Daily Wage" required disabled={loading}/>
-                             <p className="text-xs text-muted-foreground">Enter an amount, range, or terms like 'Negotiable'.</p>
-                        </div>
-
-                         {/* Urgency */}
-                        <div className="space-y-2">
-                            <Label htmlFor="urgency">Urgency *</Label>
-                            <Select name="urgency" required disabled={loading}>
-                                <SelectTrigger id="urgency">
-                                    <SelectValue placeholder="Select urgency level" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                     {urgencies.map(urgency => (
-                                        <SelectItem key={urgency} value={urgency.toLowerCase()}>{urgency}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {/* Image Upload */}
-                        <div className="space-y-2">
-                            <Label htmlFor="image">Upload Image(s) *</Label>
-                            <Input
-                                id="image"
-                                name="image"
-                                type="file"
-                                accept="image/*"
-                                required
-                                disabled={loading}
-                                multiple // Allow multiple files
-                                ref={fileInputRef}
-                                onChange={(e) => {
-                                    if (e.target.files && e.target.files.length > 10) {
-                                        toast({
-                                            title: "Too many files",
-                                            description: "You can upload a maximum of 10 images.",
-                                            variant: "destructive"
-                                        });
-                                        e.target.value = ""; // Clear selection
-                                    }
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">Add up to 10 images (max 5MB each).</p>
-                        </div>
-
-
-                        <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                             {loading ? 'Processing...' : 'Preview Post'}
-                        </Button>
+                        {/* Step 3: Media */}
+                        {currentStep === 3 && (
+                             <div className="space-y-2">
+                                <Label htmlFor="image">Upload Image(s) *</Label>
+                                <Input
+                                    id="image"
+                                    name="image"
+                                    type="file"
+                                    accept="image/*"
+                                    required
+                                    multiple // Allow multiple files
+                                    ref={fileInputRef}
+                                    onChange={handleFileChange}
+                                    disabled={loading}
+                                />
+                                <p className="text-xs text-muted-foreground">Add 1 to 10 images (max 5MB each).</p>
+                                {/* Image Preview Grid */}
+                                {formData.imageFiles.length > 0 && (
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mt-2">
+                                        {formData.imageFiles.map((file, index) => (
+                                            <div key={index} className="relative aspect-square bg-muted rounded overflow-hidden">
+                                                <Image
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={`Preview ${index + 1}`}
+                                                    fill
+                                                    style={{ objectFit: 'cover' }}
+                                                    onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)} // Clean up URL after load
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </form>
                 </CardContent>
+                 <CardFooter className="flex justify-between border-t pt-6">
+                     <Button variant="outline" onClick={prevStep} disabled={currentStep === 1 || loading}>
+                         <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+                     </Button>
+                    <Button onClick={nextStep} disabled={loading} className="bg-primary hover:bg-primary/90">
+                        {currentStep === steps.length - 1 ? 'Preview Post' : 'Next'}
+                         <ChevronRight className="ml-1 h-4 w-4" />
+                    </Button>
+                </CardFooter>
             </Card>
 
              {/* Preview Dialog */}
@@ -311,14 +388,11 @@ export default function PostNeedPage() {
                 <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Post Preview</DialogTitle>
-                        <DialogDescription>
-                            Review your post details below before submitting.
-                        </DialogDescription>
+                        <DialogDescription>Review your post details before submitting.</DialogDescription>
                     </DialogHeader>
-                    <div className="overflow-y-auto p-1 -m-1 pr-3 flex-grow"> {/* Make content scrollable */}
+                    <div className="overflow-y-auto p-1 -m-1 pr-3 flex-grow">
                         {previewData && (
                             <div className="space-y-4">
-                                {/* Image Preview Carousel/Grid */}
                                 {previewData.imageUrls.length > 0 && (
                                     <div className="grid grid-cols-3 gap-2">
                                         {previewData.imageUrls.map((url, index) => (
@@ -328,7 +402,6 @@ export default function PostNeedPage() {
                                         ))}
                                     </div>
                                 )}
-
                                 <h3 className="text-xl font-semibold">{previewData.title}</h3>
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                     <span className={`capitalize px-2 py-0.5 rounded text-xs ${previewData.postType === 'need' ? 'bg-destructive/20 text-destructive' : 'bg-primary/20 text-primary'}`}>
@@ -342,8 +415,6 @@ export default function PostNeedPage() {
                                      <p className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> Urgency: <span className='capitalize'>{previewData.urgency}</span></p>
                                      <p className="flex items-center gap-1.5 font-medium"><IndianRupee className="h-4 w-4" /> {previewData.budget}</p>
                                 </div>
-
-                                {/* TODO: Add seller info preview if relevant */}
                             </div>
                         )}
                     </div>
@@ -353,11 +424,10 @@ export default function PostNeedPage() {
                              {loading ? <><LoadingSpinner showText={false} className="h-4 w-4 mr-2"/> Posting...</> : 'Confirm & Post'}
                         </Button>
                     </DialogFooter>
-                     <DialogClose asChild>
-                         <button className="sr-only">Close</button>
-                     </DialogClose>
+                     <DialogClose asChild><button className="sr-only">Close</button></DialogClose>
                 </DialogContent>
             </Dialog>
         </div>
     );
 }
+
