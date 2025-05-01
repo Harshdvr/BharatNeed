@@ -1,4 +1,5 @@
 
+
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect } from 'react';
@@ -6,24 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
-import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react';
+import { PlusCircle, MapPin, Clock, Tag, IndianRupee, Heart, Plus, Search, MessageSquare } from 'lucide-react'; // Added new icons
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore } from '@/lib/firebase/clientApp'; // Import auth and firestore instance
-import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs } from 'firebase/firestore'; // Import Firestore functions
+import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, orderBy, limit, getDocs, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
-
-// TODO: Remove placeholder postings and fetch actual data from Firestore
-const initialPostings: any[] = [
- // Example Structure (replace with fetched data)
- // { id: '1', type: 'Need', title: 'Need Plumber for Leaky Faucet', category: 'Services', location: 'Mumbai, MH', urgency: 'Urgent', budget: 'Negotiable', description: 'Small leak under kitchen sink needs fixing ASAP.', image: 'https://picsum.photos/seed/plumber/300/200', isFavorite: false, userId: 'user1' },
- // { id: '2', type: 'Offer', title: 'Homemade Pickles for Sale', category: 'Buy/Sell', location: 'Pune, MH', urgency: 'Low', budget: '₹150/kg', description: 'Delicious mango and lemon pickles, made with traditional recipes.', image: 'https://picsum.photos/seed/pickles/300/200', isFavorite: false, userId: 'user2' },
- // { id: '3', type: 'Need', title: 'Help with Rice Harvesting', category: 'Farming', location: 'Rural Village, UP', urgency: 'High', budget: 'Daily Wage', description: 'Need 5-6 laborers for 3 days of rice harvesting next week.', image: 'https://picsum.photos/seed/harvest/300/200', isFavorite: false, userId: 'user3' },
- // { id: '4', type: 'Offer', title: 'Mathematics Tuition (Class 10)', category: 'Tuitions', location: 'Delhi', urgency: 'Medium', budget: '₹2000/month', description: 'Experienced teacher offering maths tuition for CBSE Class 10.', image: 'https://picsum.photos/seed/tuition/300/200', isFavorite: false, userId: 'user4' },
- // { id: '5', type: 'Need', title: 'Part-time Graphic Designer', category: 'Jobs', location: 'Remote', urgency: 'Medium', budget: '₹15k/month', description: 'Looking for a designer for social media posts, 10-15 hours/week.', image: 'https://picsum.photos/seed/designer/300/200', isFavorite: false, userId: 'user1' },
-];
 
 
 // Placeholder for category icons - Assuming these remain static
@@ -48,10 +39,11 @@ export default function Home() {
   const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
   const [currentPostings, setCurrentPostings] = useState<any[]>([]); // State for postings data
   const [isLoading, setIsLoading] = useState(true); // State for loading data
+  const [userFavorites, setUserFavorites] = useState<string[]>([]); // State for user's favorite IDs
   const { toast } = useToast();
   const searchParams = useSearchParams(); // Use hook for search params
 
-  // Fetch postings data from Firestore in useEffect
+  // Fetch postings data and user favorites from Firestore in useEffect
   useEffect(() => {
     // Example of using searchParams safely
     const filter = searchParams.get('filter');
@@ -61,43 +53,56 @@ export default function Home() {
         // Add logic here to fetch filtered/sorted data if needed
     }
 
-
-    const fetchPostings = async () => {
-        // No need to explicitly set isLoading here, handled by authLoading or initial fetch
+    const fetchData = async () => {
+        setIsLoading(true);
         if (!firestore) {
             console.error("Firestore not initialized");
             toast({ title: "Error", description: "Database connection failed.", variant: "destructive" });
-            setIsLoading(false); // Set loading false on error
+            setIsLoading(false);
             return;
         }
+
         try {
-            // const postingsRef = collection(firestore, 'postings'); // Adjust collection name
-            // const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20)); // Example query
-            // const querySnapshot = await getDocs(q);
-            // const fetchedPostings = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Fetch Postings
+            const postingsRef = collection(firestore, 'postings'); // Adjust collection name
+            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20)); // Example query
+            const postingsSnapshot = await getDocs(q);
+            const fetchedPostings = postingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // TODO: Fetch user's favorites to set the initial `isFavorite` state
-            // This might involve another query or checking against a user's favorites list
-            // For now, setting isFavorite to false as default placeholder behavior
+            // Fetch User Favorites (only if user is logged in)
+            let favs: string[] = [];
+            if (user) {
+                const userDocRef = doc(firestore, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    favs = userDocSnap.data().favorites || [];
+                    setUserFavorites(favs); // Update favorite IDs state
+                }
+            }
 
-            // setCurrentPostings(fetchedPostings.map(p => ({...p, isFavorite: false})));
-            setCurrentPostings(initialPostings.map(p => ({...p, isFavorite: false}))); // Replace with actual fetched data
-            console.log("Fetched postings (simulated)");
+            // Merge favorite status into postings
+            const postingsWithFavorites = fetchedPostings.map(p => ({
+                ...p,
+                isFavorite: favs.includes(p.id)
+            }));
+
+            setCurrentPostings(postingsWithFavorites);
+            console.log("Fetched postings and favorites (if applicable)");
+
         } catch (error) {
-            console.error("Error fetching postings:", error);
+            console.error("Error fetching data:", error);
             toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
         } finally {
-            setIsLoading(false); // Ensure loading is set to false after fetch completes or fails
+            setIsLoading(false);
         }
     };
 
-    // Only fetch postings if Firestore is available (avoids errors during server render/init)
-    // Wait until auth state is also resolved to potentially check for user's favorites
+    // Fetch data only when auth state is resolved and firestore is available
      if (!authLoading) {
-         fetchPostings();
+         fetchData();
      }
 
-  }, [toast, authLoading, searchParams]); // Add dependencies: authLoading to refetch if user state changes, searchParams
+  }, [toast, authLoading, user, searchParams]); // Add user to dependencies
 
 
   // Handle favoriting logic (Server Action updating Firestore)
@@ -111,17 +116,16 @@ export default function Home() {
          return;
     }
 
-    const postingIndex = currentPostings.findIndex(p => p.id === postId);
-    if (postingIndex === -1) return;
-
-    const posting = currentPostings[postingIndex];
-    const isCurrentlyFavorite = posting.isFavorite;
+    const isCurrentlyFavorite = userFavorites.includes(postId);
 
     // Optimistically update UI
     setCurrentPostings(prevPostings =>
       prevPostings.map(p =>
         p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
       )
+    );
+    setUserFavorites(prevFavs =>
+        isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
     );
 
     console.log(`Toggling favorite for post ${postId}. New state: ${!isCurrentlyFavorite}`);
@@ -148,6 +152,9 @@ export default function Home() {
             p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p
           )
         );
+         setUserFavorites(prevFavs =>
+            isCurrentlyFavorite ? [...prevFavs, postId] : prevFavs.filter(id => id !== postId)
+        );
     }
   };
 
@@ -160,7 +167,7 @@ export default function Home() {
     }
   }, [authError, toast]);
 
-  // Show LoadingSpinner if either auth state or data fetching is in progress
+  // Show LoadingSpinner if either auth state or data fetching is in progress initially
   if (isLoading || authLoading) {
        return (
             <div className="flex justify-center items-center min-h-[60vh]">
@@ -172,11 +179,12 @@ export default function Home() {
 
   return (
     <div className="relative min-h-full">
-      <div className="mb-8 text-center">
+      {/* Hero Section */}
+      <div className="mb-12 text-center pt-8 pb-4">
         <h1 className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
           Welcome to Bharat Need
         </h1>
-        <p className="mt-2 text-lg text-muted-foreground">
+        <p className="mt-2 text-lg text-muted-foreground max-w-2xl mx-auto">
           Connecting needs and offers across India. Post what you need, offer what you have.
         </p>
          <Button
@@ -194,7 +202,7 @@ export default function Home() {
 
       {/* Category Filters Placeholder */}
       {/* TODO: Implement filtering logic */}
-      <div className="mb-6 flex flex-wrap justify-center gap-2">
+      <div className="mb-8 flex flex-wrap justify-center gap-2">
         {Object.keys(categoryIcons).map((category) => {
           const Icon = getCategoryIcon(category);
           return (
@@ -209,7 +217,7 @@ export default function Home() {
 
       {/* Postings Grid */}
       {currentPostings.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-20">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12">
             {currentPostings.map((post) => {
               const CategoryIcon = getCategoryIcon(post.category);
               return (
@@ -283,6 +291,46 @@ export default function Home() {
             )}
         </div>
       )}
+
+        {/* How BharatNeed Works Section */}
+        <section className="bg-muted/50 py-16 mt-12">
+            <div className="container mx-auto px-4 text-center">
+                <h2 className="text-3xl font-bold mb-10">How BharatNeed Works</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {/* Step 1: Post Easily */}
+                    <div className="flex flex-col items-center">
+                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
+                            <Plus className="h-8 w-8 text-primary-foreground" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">1. Post Easily</h3>
+                        <p className="text-muted-foreground">
+                            Quickly post your need or offer in just a few steps.
+                        </p>
+                    </div>
+                    {/* Step 2: Find Locally */}
+                    <div className="flex flex-col items-center">
+                        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
+                            <Search className="h-8 w-8 text-primary-foreground" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">2. Find Locally</h3>
+                        <p className="text-muted-foreground">
+                            Discover relevant listings prioritized by your location.
+                        </p>
+                    </div>
+                    {/* Step 3: Connect Directly */}
+                    <div className="flex flex-col items-center">
+                         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary mb-4">
+                            <MessageSquare className="h-8 w-8 text-primary-foreground" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">3. Connect Directly</h3>
+                        <p className="text-muted-foreground">
+                            Chat and negotiate in real-time with other users.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </div>
   );
 }
