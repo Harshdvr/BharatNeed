@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react'; // Import useState, useEffect
@@ -38,7 +39,7 @@ interface Posting {
 }
 
 // Fetch posting details and related user data
-const getPostingDetails = async (id: string, db: typeof firestore, currentUserId: string | null): Promise<Posting | null> => {
+const getPostingDetails = async (id: string, db: typeof firestore | null, currentUserId: string | null): Promise<Posting | null> => {
     if (!db) return null;
     console.log(`Fetching details for ID: ${id}`);
     try {
@@ -60,9 +61,10 @@ const getPostingDetails = async (id: string, db: typeof firestore, currentUserId
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
                         sellerName = userData.name || 'Unnamed User';
-                        sellerSince = userData.createdAt ? formatDistanceToNow(userData.createdAt.toDate(), { addSuffix: true }) : 'N/A';
+                        // Ensure createdAt exists and is a timestamp before converting
+                        sellerSince = userData.createdAt?.toDate ? formatDistanceToNow(userData.createdAt.toDate(), { addSuffix: true }) : 'N/A';
                         sellerPhone = userData.phone || null; // Check privacy settings if needed
-                        sellerVerified = userSnap.data()?.isVerified || false; // Assuming 'isVerified' field
+                        sellerVerified = userData.isVerified || false; // Assuming 'isVerified' field exists in user doc
                     }
                 } catch (userError) {
                     console.error("Error fetching user data:", userError);
@@ -117,6 +119,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
     const pathname = usePathname();
     const { toast } = useToast();
     const router = useRouter();
+    // Safely use useAuthState
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
     const [posting, setPosting] = useState<Posting | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -146,6 +149,8 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                 console.error("Firebase Auth Hook Error:", authError);
                 setError('Authentication error.');
                 setIsLoading(false);
+                 // Optionally redirect or show login prompt
+                 // router.push('/login');
                 return;
             }
 
@@ -244,6 +249,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
              if (isCurrentlyFavorite) {
                 await updateDoc(userDocRef, { favorites: arrayRemove(posting.id) });
              } else {
+                // Ensure favorites array exists before trying to add to it
                 await updateDoc(userDocRef, { favorites: arrayUnion(posting.id) }, { merge: true });
              }
             console.log("Firestore favorite status updated successfully.");
@@ -285,6 +291,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         );
     }
 
+    // Safely format date only if createdAt is valid
     const postedDateFormatted = posting.createdAt?.toDate ? formatDistanceToNow(posting.createdAt.toDate(), { addSuffix: true }) : 'recently';
 
 
@@ -294,7 +301,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
                     {/* Image */}
-                    <Card className="overflow-hidden">
+                    <Card className="overflow-hidden shadow-lg rounded-lg">
                          <div className="relative aspect-video bg-muted">
                             <Image
                                 src={posting.image || 'https://picsum.photos/600/400?random=' + posting.id} // Add random query for picsum
@@ -303,13 +310,14 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 style={{ objectFit: 'cover' }}
                                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px"
                                 priority // Prioritize loading the main image
+                                data-ai-hint="product service image"
                             />
                             {/* Favorite Button Overlay on Image */}
                             {user && ( // Only show if user is logged in
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive"
+                                    className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-background/70 text-destructive hover:bg-background hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                     onClick={handleToggleFavorite}
                                     aria-label={posting.isFavorite ? "Remove from favorites" : "Add to favorites"}
                                     disabled={user.uid === posting.sellerId} // Disable if it's user's own post
@@ -321,7 +329,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                     </Card>
 
                     {/* Description Card */}
-                    <Card>
+                    <Card className="shadow-md rounded-lg">
                         <CardHeader>
                             <CardTitle>Description</CardTitle>
                         </CardHeader>
@@ -334,7 +342,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                 {/* Right Column (Price, Seller, Actions) */}
                 <div className="md:col-span-1 space-y-6">
                     {/* Price & Title Card */}
-                    <Card>
+                    <Card className="shadow-md rounded-lg">
                         <CardHeader className="pb-2">
                            <div className="flex justify-between items-start gap-2">
                                 <span className="text-2xl font-bold text-primary flex items-center">
@@ -353,25 +361,25 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 <span>Posted {postedDateFormatted}</span>
                             </div>
                         </CardHeader>
-                        <CardFooter>
-                             <Badge variant={posting.type === 'Need' ? 'destructive' : 'default'}>
+                        <CardFooter className="pt-4 flex flex-wrap gap-2">
+                             <Badge variant={posting.type === 'Need' ? 'destructive' : 'default'} className="text-xs">
                                 {posting.type}
                              </Badge>
-                             <Badge variant="secondary" className="ml-2 flex items-center gap-1">
+                             <Badge variant="secondary" className="ml-auto flex items-center gap-1 text-xs">
                                 <Tag className="h-3 w-3"/> {posting.category}
                              </Badge>
                         </CardFooter>
                     </Card>
 
                      {/* Seller Info Card */}
-                     <Card>
+                     <Card className="shadow-md rounded-lg">
                         <CardHeader>
                             <CardTitle className="text-lg">Posted by</CardTitle>
                         </CardHeader>
                         <CardContent className="flex items-center gap-4">
                             <Avatar className="h-12 w-12">
-                                {/* TODO: Fetch actual avatar or use placeholder */}
-                                <AvatarImage src={`https://avatar.vercel.sh/${posting.sellerId}.png`} alt={posting.sellerName} />
+                                {/* Use sellerId for consistent avatar generation */}
+                                <AvatarImage src={posting.sellerId ? `https://avatar.vercel.sh/${posting.sellerId}.png` : undefined} alt={posting.sellerName} data-ai-hint="seller avatar" />
                                 <AvatarFallback>{posting.sellerName?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                             </Avatar>
                             <div>
@@ -388,21 +396,21 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 {user?.uid === posting.sellerId ? "This is your post" : "Chat with Poster"}
                            </Button>
                            {showingPhone ? (
-                                <a href={`tel:${posting.phone}`} className="flex items-center justify-center w-full p-2 border rounded bg-muted hover:bg-muted/80">
+                                <a href={`tel:${posting.phone}`} className="flex items-center justify-center w-full p-2 border rounded bg-muted hover:bg-muted/80 transition-colors">
                                     <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
                                     <span className="font-medium text-foreground">{posting.phone}</span>
                                 </a>
                            ) : (
                                 <Button variant="outline" className="w-full" size="lg" onClick={handleShowPhone} disabled={!posting.phone || user?.uid === posting.sellerId}>
                                     <Phone className="mr-2 h-5 w-5" />
-                                    {posting.phone ? 'Show Phone Number' : 'Phone not available'}
+                                    {user?.uid === posting.sellerId ? 'Your Phone' : (posting.phone ? 'Show Phone Number' : 'Phone not available')}
                                 </Button>
                            )}
                          </CardFooter>
                     </Card>
 
                     {/* Location Map Placeholder */}
-                    <Card>
+                    <Card className="shadow-md rounded-lg">
                         <CardHeader>
                             <CardTitle className="text-lg">Location</CardTitle>
                         </CardHeader>
@@ -424,16 +432,16 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                  {/* TODO: Add LoadingSpinner while fetching related posts */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* Replace with actual related items */}
-                    <Card className="text-center p-4 border-dashed">
+                    <Card className="text-center p-4 border-dashed border-muted-foreground/50 rounded-lg">
                         <p className="text-muted-foreground">Related Item Placeholder</p>
                     </Card>
-                     <Card className="text-center p-4 border-dashed">
+                     <Card className="text-center p-4 border-dashed border-muted-foreground/50 rounded-lg">
                         <p className="text-muted-foreground">Related Item Placeholder</p>
                     </Card>
-                    <Card className="text-center p-4 border-dashed">
+                    <Card className="text-center p-4 border-dashed border-muted-foreground/50 rounded-lg">
                         <p className="text-muted-foreground">Related Item Placeholder</p>
                     </Card>
-                     <Card className="text-center p-4 border-dashed">
+                     <Card className="text-center p-4 border-dashed border-muted-foreground/50 rounded-lg">
                         <p className="text-muted-foreground">Related Item Placeholder</p>
                     </Card>
                 </div>
