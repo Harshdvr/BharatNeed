@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react'; // Import useState
@@ -12,7 +13,7 @@ import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clie
 import { Button } from '@/components/ui/button';
 import { doc, updateDoc, arrayRemove, getDoc, getDocs, collection, query, where } from 'firebase/firestore'; // Import Firestore functions
 
-// TODO: Define a proper type for postings
+// Posting type definition
 interface Posting {
     id: string;
     title?: string;
@@ -32,16 +33,47 @@ interface UserProfile {
   favorites?: string[]; // Array of favorite posting IDs
 }
 
+// Mock Data for testing favorites
+const mockFavoritesData: Posting[] = [
+   {
+    id: 'mockFav1', // Use a unique ID, can overlap with mock posts on home page
+    title: 'Mock Favorite: Homemade Mango Pickles',
+    description: 'Selling delicious homemade mango pickles, prepared with traditional recipes. Order now!',
+    category: 'buy/sell',
+    postType: 'offer',
+    location: 'Pune, MH',
+    budget: '₹150/kg',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/pickles/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+    dateFavorited: new Date(), // Favorited today
+  },
+   {
+    id: 'mockFav2',
+    title: 'Mock Favorite: Maths Tuition Class 10',
+    description: 'Experienced teacher offering online Maths tuition for CBSE Class 10 students.',
+    category: 'tuitions',
+    postType: 'offer',
+    location: 'Delhi',
+    budget: '₹2000/month',
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/tuition/300/200'],
+    createdAt: new Date(Date.now() - 86400000), // 1 day ago
+     dateFavorited: new Date(Date.now() - 86400000 * 1), // Favorited yesterday
+  },
+];
+
 
 export default function FavoritesPage() {
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-    const [favorites, setFavorites] = useState<Posting[]>([]);
-    const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
+    const [favorites, setFavorites] = useState<Posting[]>(mockFavoritesData); // Initialize with mock data
+    const [isLoadingInitialData, setIsLoadingInitialData] = useState(false); // No initial loading needed for mock
     const [loadingRemoveId, setLoadingRemoveId] = useState<string | null>(null); // State to track which item is being removed
     const { toast } = useToast();
-    const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+    const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock
 
-    // Check Firestore initialization status
+    // --- Commented out Firestore fetching logic ---
+    /*
      useEffect(() => {
          if (firestore) {
              setFirestoreInitialized(true);
@@ -82,8 +114,6 @@ export default function FavoritesPage() {
               }
 
               // Fetch the actual posting details for each favorite ID
-              // Use 'in' query for efficiency (max 10 IDs per query, might need batching for > 10)
-              // For simplicity, fetching one by one here. Consider batching or 'in' query for optimization.
               const favoritePostingsPromises = favoriteIds.map(id => getDoc(doc(fs, 'postings', id)));
               const favoritePostingsSnaps = await Promise.all(favoritePostingsPromises);
               const fetchedFavorites = favoritePostingsSnaps
@@ -121,9 +151,12 @@ export default function FavoritesPage() {
         setIsLoadingInitialData(false);
       }
 
-  }, [user, authLoading, toast, authError, firestoreInitialized]); // Add firestoreInitialized dependency
+  }, [user, authLoading, toast, authError, firestoreInitialized]);
+  */
+  // --- End of commented out Firestore fetching logic ---
 
 
+    // Simulated Remove Favorite Handler
     const handleRemoveFavorite = async (id: string) => {
          if (!user) {
              toast({ title: "Login Required", description: "Please log in to manage favorites.", variant: "destructive"});
@@ -131,15 +164,23 @@ export default function FavoritesPage() {
          }
         setLoadingRemoveId(id); // Start loading for this specific item
 
-        try {
-            const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
-            // Call server action or directly update Firestore to remove from DB
-             const userDocRef = doc(fs, 'users', user.uid);
-             await updateDoc(userDocRef, { favorites: arrayRemove(id) }); // Firestore function
-            console.log(`Removed favorite ${id} from Firestore`);
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // Optimistically update UI
-            setFavorites(prev => prev.filter(ad => ad.id !== id));
+        // Optimistically update UI
+        setFavorites(prev => prev.filter(ad => ad.id !== id));
+        toast({ title: "Removed", description: "Posting removed from favorites (simulated)." });
+
+        setLoadingRemoveId(null); // Stop loading
+
+        // In real app, keep the try/catch and Firestore update logic here
+        /*
+        try {
+            const fs = ensureFirestoreInitialized();
+             const userDocRef = doc(fs, 'users', user.uid);
+             await updateDoc(userDocRef, { favorites: arrayRemove(id) });
+            console.log(`Removed favorite ${id} from Firestore`);
+            // UI update happens above
             toast({ title: "Removed", description: "Posting removed from favorites." });
         } catch (error: any) {
             console.error("Failed to remove favorite:", error);
@@ -154,10 +195,11 @@ export default function FavoritesPage() {
         } finally {
             setLoadingRemoveId(null); // Stop loading
         }
+        */
     };
 
-    // Show loading spinner if auth, data loading, or firestore init is pending
-    if (isLoadingInitialData || authLoading || !firestoreInitialized) {
+    // Show loading spinner only if auth is loading
+    if (authLoading) {
         return (
             <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -184,7 +226,7 @@ export default function FavoritesPage() {
             {favorites.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {favorites.map((ad) => {
-                        const dateFavoritedFormatted = ad.dateFavorited?.toDate ? ad.dateFavorited.toDate().toLocaleDateString() : ''; // Adjust formatting if needed
+                        const dateFavoritedFormatted = ad.dateFavorited instanceof Date ? ad.dateFavorited.toLocaleDateString() : ad.dateFavorited?.toDate ? ad.dateFavorited.toDate().toLocaleDateString() : '';
                         return (
                         <Card key={ad.id} className="overflow-hidden flex flex-col shadow-md hover:shadow-lg transition-shadow duration-200 relative">
                              {/* Show spinner overlay if this item is being removed */}
@@ -200,6 +242,7 @@ export default function FavoritesPage() {
                                     fill
                                     style={{ objectFit: 'cover' }}
                                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                                    priority={ad.id.startsWith('mockFav')} // Prioritize loading mock images
                                 />
                             </Link>
                             <div className="p-4 flex flex-col flex-grow">
@@ -213,7 +256,6 @@ export default function FavoritesPage() {
                                     </CardDescription>
                                 </Link>
                                 <div className="flex justify-between items-center mt-3 pt-2 border-t">
-                                    {/* Display actual favorited date if available */}
                                     <span className="text-xs text-muted-foreground">
                                         {dateFavoritedFormatted ? `Favorited ${dateFavoritedFormatted}` : 'Favorited'}
                                      </span>
@@ -235,7 +277,7 @@ export default function FavoritesPage() {
                 </div>
             ) : (
                 <div className="text-center py-10">
-                    {isLoadingInitialData ? (
+                    {isLoadingInitialData ? ( // Keep this check for potential real data loading later
                          <LoadingSpinner />
                     ) : (
                          <>

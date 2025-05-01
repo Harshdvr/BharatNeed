@@ -31,72 +31,119 @@ const getCategoryIcon = (category: string): React.ElementType => {
   return categoryIcons[category] || Tag; // Default to Tag icon
 };
 
+// Mock Data for testing
+const mockPostings = [
+  {
+    id: 'mock1',
+    title: 'Mock Need: Urgent Plumbing Help',
+    description: 'Need a plumber urgently for a leaky kitchen sink. Available anytime today.',
+    category: 'services',
+    postType: 'need',
+    location: 'Mumbai, MH',
+    budget: 'Negotiable',
+    urgency: 'urgent',
+    imageUrls: ['https://picsum.photos/seed/plumber/300/200'],
+    createdAt: new Date(),
+    isFavorite: false, // Initial state
+  },
+  {
+    id: 'mock2',
+    title: 'Mock Offer: Homemade Mango Pickles',
+    description: 'Selling delicious homemade mango pickles, prepared with traditional recipes. Order now!',
+    category: 'buy/sell',
+    postType: 'offer',
+    location: 'Pune, MH',
+    budget: '₹150/kg',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/pickles/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+    isFavorite: false,
+  },
+  {
+    id: 'mock3',
+    title: 'Mock Need: Farm Laborers for Harvest',
+    description: 'Looking for 5-6 laborers for rice harvesting for 3 days next week. Daily wage provided.',
+    category: 'farming',
+    postType: 'need',
+    location: 'Rural Village, UP',
+    budget: 'Daily Wage',
+    urgency: 'high',
+    imageUrls: ['https://picsum.photos/seed/harvest/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 5), // 5 days ago
+    isFavorite: false,
+  },
+    {
+    id: 'mock4',
+    title: 'Mock Offer: Maths Tuition Class 10',
+    description: 'Experienced teacher offering online Maths tuition for CBSE Class 10 students.',
+    category: 'tuitions',
+    postType: 'offer',
+    location: 'Delhi',
+    budget: '₹2000/month',
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/tuition/300/200'],
+    createdAt: new Date(Date.now() - 86400000), // 1 day ago
+    isFavorite: false,
+  },
+];
+
 
 export default function Home() {
-  // IMPORTANT: Check if auth is initialized before using the hook
-  // Default to loading if auth is null or undefined during initialization
   const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-  const [currentPostings, setCurrentPostings] = useState<any[]>([]); // State for postings data
-  const [isLoading, setIsLoading] = useState(true); // State for loading data
+  const [currentPostings, setCurrentPostings] = useState<any[]>(mockPostings); // Initialize with mock data
+  const [isLoading, setIsLoading] = useState(false); // Set initial loading to false as we use mock data
   const [userFavorites, setUserFavorites] = useState<string[]>([]); // State for user's favorite IDs
   const { toast } = useToast();
-  const searchParams = useSearchParams(); // Use hook for search params
-  const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+  const searchParams = useSearchParams();
+  const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock data
 
-  // Check Firestore initialization status
-  useEffect(() => {
+  // --- Commented out Firestore fetching logic ---
+  /*
+   useEffect(() => {
     if (firestore) {
       setFirestoreInitialized(true);
     } else {
-      // Attempt to re-check after a delay if it wasn't ready initially
       const timeoutId = setTimeout(() => {
         if (firestore) {
           setFirestoreInitialized(true);
         } else {
           console.error("Firestore still not initialized after delay.");
           toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
-          setIsLoading(false); // Stop loading indicator if DB fails
+          setIsLoading(false);
         }
-      }, 2000); // 2-second delay
+      }, 2000);
       return () => clearTimeout(timeoutId);
     }
   }, [toast]);
 
 
-  // Fetch postings data and user favorites from Firestore in useEffect
   useEffect(() => {
-    // Example of using searchParams safely
     const filter = searchParams.get('filter');
     const sort = searchParams.get('sort');
     if (filter || sort) {
         console.log('Applying filters - Filter:', filter, 'Sort:', sort);
-        // Add logic here to fetch filtered/sorted data if needed
     }
 
     const fetchData = async () => {
         setIsLoading(true);
-        // Use the helper to ensure firestore is ready
         try {
-            const fs = ensureFirestoreInitialized(); // This will throw if firestore is null
+            const fs = ensureFirestoreInitialized();
 
-            // Fetch Postings
-            const postingsRef = collection(fs, 'postings'); // Adjust collection name
-            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20)); // Example query
+            const postingsRef = collection(fs, 'postings');
+            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(20));
             const postingsSnapshot = await getDocs(q);
             const fetchedPostings = postingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Fetch User Favorites (only if user is logged in)
             let favs: string[] = [];
             if (user) {
                 const userDocRef = doc(fs, 'users', user.uid);
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     favs = userDocSnap.data().favorites || [];
-                    setUserFavorites(favs); // Update favorite IDs state
+                    setUserFavorites(favs);
                 }
             }
 
-            // Merge favorite status into postings
             const postingsWithFavorites = fetchedPostings.map(p => ({
                 ...p,
                 isFavorite: favs.includes(p.id)
@@ -106,15 +153,11 @@ export default function Home() {
             console.log("Fetched postings and favorites (if applicable)");
 
         } catch (error: any) {
-            // Handle errors from ensureFirestoreInitialized or Firestore operations
             console.error("Error fetching data:", error);
              if (error.message.includes("Firestore is not initialized")) {
-                 // Specific message if initialization failed
                   toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
              } else if (error.code === 'unavailable' || error.message.includes('offline')) {
-                 // Handle offline error specifically if persistence is enabled
                  toast({ title: "Offline", description: "Could not reach the server. Displaying cached data if available.", variant: "default" });
-                 // Attempt to read from cache (Firestore does this automatically if persistence is enabled)
              }
              else {
                  toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
@@ -124,89 +167,72 @@ export default function Home() {
         }
     };
 
-    // Fetch data only when auth state is resolved and firestore is confirmed initialized
      if (!authLoading && firestoreInitialized) {
          fetchData();
      }
 
-  }, [toast, authLoading, user, searchParams, firestoreInitialized]); // Add user and firestoreInitialized to dependencies
+  }, [toast, authLoading, user, searchParams, firestoreInitialized]);
+  */
+  // --- End of commented out Firestore fetching logic ---
 
-
-  // Handle favoriting logic (Server Action updating Firestore)
+  // Handle favoriting logic (Simulated for mock data)
   const handleToggleFavorite = async (postId: string) => {
     if (!user) {
         toast({ title: "Login Required", description: "Please log in to add favorites.", variant: "destructive" });
         return;
     }
+     // Optimistically update UI for mock data
+    const isCurrentlyFavorite = userFavorites.includes(postId);
+    setCurrentPostings(prevPostings =>
+      prevPostings.map(p =>
+        p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
+      )
+    );
+    setUserFavorites(prevFavs =>
+        isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
+    );
+
+    toast({
+      description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
+    });
+
+    // Simulate Firestore update (remove in final version)
+    console.log(`Simulating favorite toggle for post ${postId}. New state: ${!isCurrentlyFavorite}`);
+    console.log("Updated user favorites (simulated):", userFavorites);
+
+    // In real app, keep the try/catch and Firestore update logic here
+    /*
      try {
-         const fs = ensureFirestoreInitialized(); // Ensure Firestore is ready
-
-        const isCurrentlyFavorite = userFavorites.includes(postId);
-
-        // Optimistically update UI
-        setCurrentPostings(prevPostings =>
-          prevPostings.map(p =>
-            p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p
-          )
-        );
-        setUserFavorites(prevFavs =>
-            isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
-        );
-
-        console.log(`Toggling favorite for post ${postId}. New state: ${!isCurrentlyFavorite}`);
-        toast({
-          description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
-        });
-
-        // Update user's favorites array in Firestore
-        const userDocRef = doc(fs, 'users', user.uid);
+         const fs = ensureFirestoreInitialized();
+         const userDocRef = doc(fs, 'users', user.uid);
         if (isCurrentlyFavorite) {
             await updateDoc(userDocRef, { favorites: arrayRemove(postId) });
         } else {
-            // Use merge: true to create the favorites array if it doesn't exist
             await updateDoc(userDocRef, { favorites: arrayUnion(postId) }, { merge: true });
         }
         console.log("Firestore favorite status updated");
     } catch (error: any) {
-        console.error("Error updating favorites:", error);
-         if (error.message.includes("Firestore is not initialized")) {
-             toast({ title: "Database Error", description: "Could not update favorites.", variant: "destructive" });
-         } else if (error.code === 'unavailable' || error.message.includes('offline')) {
-             toast({ title: "Offline", description: "Could not update favorites. Please check your connection.", variant: "destructive" });
-         }
-         else {
-            toast({ title: "Error", description: "Could not update favorites.", variant: "destructive" });
-        }
-        // Revert optimistic UI update on error
-         const isCurrentlyFavorite = userFavorites.includes(postId); // Check original state before optimistic update attempt
-        setCurrentPostings(prevPostings =>
-          prevPostings.map(p =>
-            p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p
-          )
-        );
-         setUserFavorites(prevFavs =>
-            isCurrentlyFavorite ? [...prevFavs, postId] : prevFavs.filter(id => id !== postId)
-         );
+         // Error handling and UI revert
     }
+    */
   };
+
 
   // Handle auth error display
   useEffect(() => {
     if (authError) {
       console.error("Firebase Auth Hook Error:", authError);
-      // Avoid showing toast directly in header or global layout to prevent hydration issues
-      // Show error messages on specific pages or via dedicated notification system if needed
     }
   }, [authError, toast]);
 
-  // Show LoadingSpinner if either auth state or data fetching is in progress initially, or if firestore isn't initialized yet
-  if (isLoading || authLoading || !firestoreInitialized) {
+  // Show LoadingSpinner only if auth is loading, not for data fetching (using mock data)
+   if (authLoading) {
        return (
             <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
             </div>
        );
-  }
+   }
 
 
   return (
@@ -233,12 +259,11 @@ export default function Home() {
       </div>
 
       {/* Category Filters Placeholder */}
-      {/* TODO: Implement filtering logic */}
       <div className="mb-8 flex flex-wrap justify-center gap-2">
         {Object.keys(categoryIcons).map((category) => {
           const Icon = getCategoryIcon(category);
           return (
-            <Button key={category} variant="outline" size="sm" className="gap-1">
+            <Button key={category} variant="outline" size="sm" className="gap-1 capitalize">
               <Icon />
               {category}
             </Button>
@@ -252,8 +277,8 @@ export default function Home() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-12">
             {currentPostings.map((post) => {
               const CategoryIcon = getCategoryIcon(post.category);
-              const createdAtDate = post.createdAt?.toDate ? post.createdAt.toDate() : null; // Convert Timestamp to Date if available
-              const formattedDate = createdAtDate ? createdAtDate.toLocaleDateString() : 'N/A'; // Format the date
+              const createdAtDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : null;
+              const formattedDate = createdAtDate ? createdAtDate.toLocaleDateString() : 'N/A';
 
               return (
               <Card key={post.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card">
@@ -266,6 +291,7 @@ export default function Home() {
                             style={{ objectFit: 'cover' }}
                             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
                             data-ai-hint="product service picture" /* Added AI hint */
+                            priority={post.id.startsWith('mock')} // Prioritize loading mock images
                         />
                      </Link>
                     {/* Favorite Button Overlay */}
@@ -307,7 +333,6 @@ export default function Home() {
                         <IndianRupee className="h-3.5 w-3.5" /> {post.budget || 'N/A'}
                      </div>
                       <div className="flex items-center gap-1.5 w-full text-muted-foreground pb-3 px-4">
-                         {/* Display formatted date */}
                          <Clock className="h-3.5 w-3.5" /> Posted: {formattedDate}
                       </div>
                   </CardFooter>
@@ -318,17 +343,11 @@ export default function Home() {
           </div>
       ) : (
          <div className="text-center py-10">
-            {isLoading ? ( // Show spinner while postings are loading if no postings yet
-                <LoadingSpinner />
-            ) : (
-                <>
-                    <p className="text-lg text-muted-foreground">No postings found. Be the first to post!</p>
-                    <Button asChild className="mt-4">
-                        <Link href="/post-need">Post Need/Offer</Link>
-                    </Button>
-                 </>
-            )}
-        </div>
+            <p className="text-lg text-muted-foreground">No postings found. Be the first to post!</p>
+            <Button asChild className="mt-4">
+                <Link href="/post-need">Post Need/Offer</Link>
+            </Button>
+         </div>
       )}
 
         {/* How BharatNeed Works Section */}

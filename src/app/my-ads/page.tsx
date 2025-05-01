@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react'; // Import useState and useEffect
@@ -14,7 +15,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'; // Import hook
 import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp'; // Import auth, firestore, and helper
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'; // Import Firestore functions
 
-// TODO: Define a proper type for postings
+// Posting type definition
 interface Posting {
     id: string;
     status?: 'active' | 'pending' | 'inactive';
@@ -30,15 +31,80 @@ interface Posting {
     createdAt?: any; // Firestore Timestamp
 }
 
+// Mock Data for testing
+const mockUserAds: Posting[] = [
+  {
+    id: 'myad1',
+    userId: 'mockUserId123', // Add a mock user ID
+    title: 'My Mock Ad: Offering Web Design Services',
+    description: 'Experienced web designer available for freelance projects. Specializing in React and Next.js.',
+    category: 'services',
+    postType: 'offer',
+    location: 'Remote',
+    budget: 'Project-based',
+    urgency: 'medium',
+    imageUrls: ['https://picsum.photos/seed/webdesign/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 3), // 3 days ago
+    status: 'active',
+    views: 25,
+  },
+  {
+    id: 'myad2',
+    userId: 'mockUserId123',
+    title: 'My Mock Need: Looking for Used Bicycle',
+    description: 'Need a decent condition used bicycle for daily commute. Budget around ₹3000.',
+    category: 'buy/sell',
+    postType: 'need',
+    location: 'Bangalore, KA',
+    budget: '₹3000',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/bicycle/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 10), // 10 days ago
+    status: 'active',
+    views: 40,
+  },
+    {
+    id: 'myad3',
+    userId: 'mockUserId123',
+    title: 'Pending Ad: Guitar Lessons',
+    description: 'Offering beginner guitar lessons online.',
+    category: 'tuitions',
+    postType: 'offer',
+    location: 'Online',
+    budget: '₹500/hour',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/guitar/300/200'],
+    createdAt: new Date(), // Today
+    status: 'pending', // Pending status
+    views: 0,
+  },
+    {
+    id: 'myad4',
+    userId: 'mockUserId123',
+    title: 'Inactive Ad: Sold Old Table',
+    description: 'Solid wood table, sold.',
+    category: 'buy/sell',
+    postType: 'offer',
+    location: 'Chennai, TN',
+    budget: '₹1500',
+    urgency: 'low',
+    imageUrls: ['https://picsum.photos/seed/table/300/200'],
+    createdAt: new Date(Date.now() - 86400000 * 30), // 30 days ago
+    status: 'inactive', // Inactive status
+    views: 55,
+  },
+];
+
 export default function MyAdsPage() {
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-    const [myPostings, setMyPostings] = useState<Posting[]>([]); // State for user's postings
-    const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
+    const [myPostings, setMyPostings] = useState<Posting[]>(mockUserAds); // Initialize with mock data
+    const [isLoadingInitialData, setIsLoadingInitialData] = useState(false); // No initial loading needed for mock
     const [loadingDeleteId, setLoadingDeleteId] = useState<string | null>(null); // State for delete loading
     const { toast } = useToast();
-     const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init
+    const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock
 
-    // Check Firestore initialization status
+    // --- Commented out Firestore fetching logic ---
+    /*
      useEffect(() => {
          if (firestore) {
              setFirestoreInitialized(true);
@@ -99,13 +165,16 @@ export default function MyAdsPage() {
         });
         setIsLoadingInitialData(false);
       }
-    }, [user, authLoading, toast, authError, firestoreInitialized]); // Add firestoreInitialized dependency
+    }, [user, authLoading, toast, authError, firestoreInitialized]);
+    */
+   // --- End of commented out Firestore fetching logic ---
 
 
     const activeAds = myPostings.filter(ad => ad.status === 'active');
     const pendingAds = myPostings.filter(ad => ad.status === 'pending');
     const inactiveAds = myPostings.filter(ad => ad.status === 'inactive');
 
+    // Simulated Delete Handler
     const handleDelete = async (id: string) => {
         if (!user) {
              toast({ title: "Login Required", description: "Please log in.", variant: "destructive" });
@@ -113,14 +182,22 @@ export default function MyAdsPage() {
         }
         setLoadingDeleteId(id); // Start loading for this ad deletion
 
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Optimistically update UI
+        setMyPostings(prev => prev.filter(ad => ad.id !== id));
+        toast({ title: "Ad Deleted", description: "Your ad has been successfully deleted (simulated)." });
+
+        setLoadingDeleteId(null); // Stop loading
+
+        // In real app, keep the try/catch and Firestore delete logic here
+        /*
         try {
-            const fs = ensureFirestoreInitialized(); // Ensure firestore is ready
-            // Call server action or directly delete from Firestore using the ad ID
+            const fs = ensureFirestoreInitialized();
             await deleteDoc(doc(fs, 'postings', id));
             console.log(`Deleted ad ${id} from Firestore`);
-
-            // Optimistically update UI
-            setMyPostings(prev => prev.filter(ad => ad.id !== id));
+            // UI update happens above
             toast({ title: "Ad Deleted", description: "Your ad has been successfully deleted." });
         } catch (error: any) {
             console.error("Failed to delete ad:", error);
@@ -131,13 +208,15 @@ export default function MyAdsPage() {
              } else {
                 toast({ title: "Error", description: "Could not delete the ad.", variant: "destructive" });
             }
-             // No UI revert needed here, deletion failed
+            // Revert UI if needed, or allow retry
         } finally {
             setLoadingDeleteId(null); // Stop loading
         }
+        */
     };
 
-    if (isLoadingInitialData || authLoading || !firestoreInitialized) { // Check firestoreInitialized
+     // Show loading only if auth is loading
+    if (authLoading) {
         return (
              <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -216,7 +295,7 @@ function AdCard({ ad, onDelete, loadingDeleteId }: {
 }) {
     const isDeleting = loadingDeleteId === ad.id;
     // Format date if available
-    const datePostedFormatted = ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A'; // Adjust formatting
+    const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
 
 
     return (
@@ -234,6 +313,7 @@ function AdCard({ ad, onDelete, loadingDeleteId }: {
                     fill
                     style={{ objectFit: 'cover' }}
                     sizes="(max-width: 640px) 100vw, 192px" // Adjust sizes
+                    priority={ad.id.startsWith('myad')} // Prioritize loading mock images
                  />
             </Link>
             <div className="flex-grow flex flex-col">
@@ -268,7 +348,8 @@ function AdCard({ ad, onDelete, loadingDeleteId }: {
                          {/* TODO: Add edit functionality */}
                          {(ad.status === 'active' || ad.status === 'inactive') && ( // Allow edit for active/inactive
                             <Button variant="outline" size="sm" className="h-7 px-2" asChild disabled={!!loadingDeleteId}>
-                               <Link href={`/post-need?edit=${ad.id}`}> {/* Link to edit page */}
+                               {/* TODO: Update edit link/functionality for mock data if needed */}
+                               <Link href={`/post-need?edit=${ad.id}`}>
                                   <Edit className="h-3.5 w-3.5 mr-1" /> Edit
                                </Link>
                             </Button>
