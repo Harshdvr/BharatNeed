@@ -180,10 +180,30 @@ export default function PostNeedPage() {
 
                         {/* Image Upload */}
                         <div className="space-y-2">
-                            <Label htmlFor="image">Upload Image</Label> {/* Removed "(Optional)" */}
-                            {/* TODO: Implement actual image upload handling */}
-                            <Input id="image" name="image" type="file" accept="image/*" required disabled={loading}/> {/* Added required attribute */}
-                            <p className="text-xs text-muted-foreground">Add an image (max 5MB).</p>
+                            <Label htmlFor="image">Upload Image(s)</Label> {/* Changed label text */}
+                            {/* TODO: Implement actual image upload handling and validation */}
+                            <Input
+                                id="image"
+                                name="image" // Keep the name consistent, backend needs to handle multiple files under this name
+                                type="file"
+                                accept="image/*"
+                                required
+                                disabled={loading}
+                                multiple // Allow multiple files
+                                // Add validation if possible e.g., using onChange event handler
+                                onChange={(e) => {
+                                    if (e.target.files && e.target.files.length > 10) {
+                                        toast({
+                                            title: "Too many files",
+                                            description: "You can upload a maximum of 10 images.",
+                                            variant: "destructive"
+                                        });
+                                        // Reset file input if needed, or just show the warning
+                                        e.target.value = ""; // This might clear the selection
+                                    }
+                                }}
+                            />
+                            <p className="text-xs text-muted-foreground">Add up to 10 images (max 5MB each).</p> {/* Updated description */}
                         </div>
 
 
