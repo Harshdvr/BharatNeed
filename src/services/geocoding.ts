@@ -53,13 +53,21 @@ export async function getSuggestions(searchTerm: string): Promise<Suggestion[]> 
   try {
     console.log(`Calling Place Autocomplete API: ${url}`); // Debug log
     const response = await fetch(url);
+
+    // Check if the response status is OK *before* trying to parse JSON
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`Error fetching suggestions: ${response.status} ${response.statusText}`, errorBody);
-      throw new Error(`Failed to fetch suggestions. Status: ${response.status}`);
+        let errorBody = 'Could not read error body';
+        try {
+            errorBody = await response.text(); // Try reading text first for better error details
+        } catch (readError) {
+           console.error("Error reading response body:", readError);
+        }
+        console.error(`Error fetching suggestions: ${response.status} ${response.statusText}`, errorBody);
+        // Throw a more specific error based on status code if possible
+        throw new Error(`Failed to fetch suggestions. Status: ${response.status}. Check API Key, CORS, or Network.`);
     }
 
-    const data = await response.json();
+    const data = await response.json(); // Now safe to parse JSON
     console.log("Place Autocomplete API response:", data); // Debug log
 
     if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
@@ -76,9 +84,15 @@ export async function getSuggestions(searchTerm: string): Promise<Suggestion[]> 
       value: item.place_id, // Use place_id as the unique value
     }));
 
-  } catch (error) {
+  } catch (error: any) { // Catch network errors (like Failed to fetch) or errors thrown above
     console.error('Error in getSuggestions:', error);
-    // Re-throw error to be caught by the calling component
+     // Add a more specific check for network errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error("Network error: Check internet connection, CORS settings, or API key restrictions (HTTP referrers).");
+        // You might want to throw a more user-friendly error or return an empty array here
+        throw new Error("Network error while fetching location suggestions.");
+    }
+    // Re-throw other errors
     throw error;
   }
 }
@@ -103,10 +117,17 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
   try {
     console.log(`Calling Geocoding API: ${url}`); // Debug log
     const response = await fetch(url);
+
+     // Check if the response status is OK *before* trying to parse JSON
     if (!response.ok) {
-      const errorBody = await response.text();
+        let errorBody = 'Could not read error body';
+        try {
+            errorBody = await response.text(); // Try reading text first for better error details
+        } catch (readError) {
+           console.error("Error reading response body:", readError);
+        }
       console.error(`Error fetching reverse geocode: ${response.status} ${response.statusText}`, errorBody);
-      throw new Error(`Failed to fetch address. Status: ${response.status}`);
+      throw new Error(`Failed to fetch address. Status: ${response.status}. Check API Key, CORS, or Network.`);
     }
 
     const data = await response.json();
@@ -152,8 +173,13 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
 
     return { city, state, country };
 
-  } catch (error) {
+  } catch (error: any) { // Catch network errors or errors thrown above
     console.error('Error in getAddress:', error);
+    // Add a more specific check for network errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error("Network error: Check internet connection, CORS settings, or API key restrictions (HTTP referrers).");
+        throw new Error("Network error while getting address from coordinates.");
+    }
     throw error; // Re-throw the error
   }
 }
