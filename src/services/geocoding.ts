@@ -26,7 +26,7 @@ export interface Address {
  * Interface representing a suggested location from Place Autocomplete.
  */
 export interface Suggestion {
-  value: string; // Unique identifier (Place ID)
+  value: string; // Unique identifier (Place ID or Coordinates for current location)
   label: string; // Display label (Formatted Address/Description)
 }
 
@@ -44,36 +44,33 @@ export async function getSuggestions(searchTerm: string): Promise<Suggestion[]> 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     console.error("Google Maps API key (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) not found in environment variables.");
-    // Optionally throw an error or return a specific error indicator
-    // throw new Error("API key missing");
-    return []; // Return empty array if key is missing
+    throw new Error("API key missing"); // Throw error to indicate configuration issue
   }
 
-  // Consider adding '&components=country:IN' to restrict results to India
+  // Restrict results to India and prioritize city-level results
   const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(searchTerm)}&types=(cities)&components=country:IN&key=${apiKey}`;
 
   try {
+    console.log(`Calling Place Autocomplete API: ${url}`); // Debug log
     const response = await fetch(url);
     if (!response.ok) {
-      // Handle HTTP errors (like 4xx, 5xx)
-      const errorBody = await response.text(); // Try to get more details
+      const errorBody = await response.text();
       console.error(`Error fetching suggestions: ${response.status} ${response.statusText}`, errorBody);
       throw new Error(`Failed to fetch suggestions. Status: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log("Place Autocomplete API response:", data); // Debug log
 
     if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-      // Handle API-specific errors (like INVALID_REQUEST, OVER_QUERY_LIMIT)
       console.error("Google Place Autocomplete API Error:", data.status, data.error_message);
       throw new Error(data.error_message || `Place Autocomplete API Error: ${data.status}`);
     }
 
     if (data.status === "ZERO_RESULTS" || !data.predictions) {
-      return []; // No suggestions found
+      return [];
     }
 
-    // Map predictions to the Suggestion format
     return data.predictions.map((item: any) => ({
       label: item.description,
       value: item.place_id, // Use place_id as the unique value
@@ -81,9 +78,8 @@ export async function getSuggestions(searchTerm: string): Promise<Suggestion[]> 
 
   } catch (error) {
     console.error('Error in getSuggestions:', error);
-    // Re-throw or return empty array/error object based on desired handling
-    // throw error;
-    return [];
+    // Re-throw error to be caught by the calling component
+    throw error;
   }
 }
 
@@ -98,12 +94,14 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     console.error("Google Maps API key (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) not found.");
-    throw new Error("API key missing"); // Throw error for reverse geocoding as it's crucial
+    throw new Error("API key missing");
   }
 
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+  // Prioritize results types for city and state
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=locality|administrative_area_level_1&key=${apiKey}`;
 
   try {
+    console.log(`Calling Geocoding API: ${url}`); // Debug log
     const response = await fetch(url);
     if (!response.ok) {
       const errorBody = await response.text();
@@ -112,6 +110,7 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
     }
 
     const data = await response.json();
+     console.log("Geocoding API response:", data); // Debug log
 
     if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
       console.error("Google Geocoding API Error:", data.status, data.error_message);
@@ -120,12 +119,12 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
 
     if (data.status === "ZERO_RESULTS" || !data.results || data.results.length === 0) {
        console.warn("No results found for reverse geocoding:", { lat, lng });
-       // Return default or throw error based on requirement
-       return { city: "Unknown", state: "N/A" };
+       throw new Error("Could not determine address for the current location.");
     }
 
-    // Extract city and state from the first result's address components
-    const components = data.results[0]?.address_components || [];
+    // Find the most relevant result (often the first one works well with filtered types)
+    const result = data.results[0];
+    const components = result?.address_components || [];
 
     // Find city (locality or administrative_area_level_3 often work)
     const cityComponent = components.find((c: any) =>
@@ -142,26 +141,19 @@ export async function getAddress({ lat, lng }: Location): Promise<Address> {
 
     const city = cityComponent?.long_name || '';
     const state = stateComponent?.short_name || ''; // Use short_name for state typically (e.g., MH)
-     const country = countryComponent?.short_name || '';
+    const country = countryComponent?.short_name || '';
 
     if (!city || !state) {
        console.warn("Could not extract city or state from geocoding results:", components);
-       // Attempt fallback using formatted_address if needed
-       const formattedAddress = data.results[0]?.formatted_address || '';
-       // Basic split, might need refinement
-       const parts = formattedAddress.split(', ');
-       return {
-          city: city || parts[parts.length - 3] || 'Unknown', // Guess city
-          state: state || parts[parts.length - 2]?.split(' ')[0] || 'N/A', // Guess state abbreviation
-          country: country || parts[parts.length - 1] || '',
-       };
+       // Attempt fallback using formatted_address if needed - often less reliable
+       const formattedAddress = result?.formatted_address || '';
+       throw new Error(`Could not determine city/state. Best guess: ${formattedAddress}`);
     }
 
     return { city, state, country };
 
   } catch (error) {
     console.error('Error in getAddress:', error);
-    // Re-throw the error to be handled by the caller
-    throw error;
+    throw error; // Re-throw the error
   }
 }

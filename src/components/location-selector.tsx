@@ -66,7 +66,9 @@ export default function LocationSelector () {
     }
     setIsLoadingSuggestions(true);
     try {
+      console.log(`Fetching suggestions for: ${value}`); // Debug log
       const newSuggestions = await getSuggestions(value); // Use the function for real API calls
+      console.log("Received suggestions:", newSuggestions); // Debug log
       setSuggestions(newSuggestions);
     } catch (error: any) {
       console.error("Error fetching suggestions:", error);
@@ -110,8 +112,9 @@ export default function LocationSelector () {
         try {
           const geoLoc: Location = { lat: latitude, lng: longitude };
           const address = await getAddress(geoLoc); // Use the function for real API calls
-          const locationLabel = `${address.city}, ${address.state}`; // Format as needed
-          // Create a suggestion object for the current location
+           const locationLabel = `${address.city}, ${address.state}`; // Format as needed
+           // Create a suggestion object for the current location
+           // Use a unique value, like coordinates, or the formatted label if Place ID isn't available
           const currentLocation: Suggestion = { value: `coords:${latitude},${longitude}`, label: locationLabel };
           setSelectedLocation(currentLocation);
           toast({
@@ -174,11 +177,12 @@ export default function LocationSelector () {
           <CommandInput
             placeholder='Search city, state...'
             value={searchValue}
-            onValueChange={handleSearchChange}
+            onValueChange={handleSearchChange} // Use the debounced handler or direct handler
+            aria-label="Search for a location"
           />
           <CommandList>
             <CommandEmpty>
-              {isLoadingSuggestions ? 'Loading...' : (searchValue.length < 3 ? 'Type more to search' : 'No location found.')}
+              {isLoadingSuggestions ? 'Loading...' : (searchValue.length < 3 ? 'Type 3+ letters to search' : 'No location found.')}
             </CommandEmpty>
             <CommandGroup>
               {/* Use Current Location Item */}
@@ -197,8 +201,8 @@ export default function LocationSelector () {
                 <span>{isLoadingCurrent ? 'Getting Location...' : 'Use Current Location'}</span>
               </CommandItem>
 
-              {/* Suggestions List */}
-              {suggestions.map((location) => (
+              {/* Suggestions List - Make sure this part renders */}
+              {suggestions.length > 0 && suggestions.map((location) => (
                 <CommandItem
                   key={location.value} // Use place_id or a unique ID as key
                   value={location.label} // Value used for filtering if enabled, label is fine here
