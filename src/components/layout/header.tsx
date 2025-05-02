@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react'; // Import useEffect and useState
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, LogOut } from 'lucide-react'; // Removed unused icons
+import { Search, LogOut, Heart } from 'lucide-react'; // Import Heart
 import LanguageSwitcher from '@/components/language-switcher';
 import LocationSelector from '@/components/location-selector';
 import BharatNeedLogo from '@/components/bharat-need-logo';
@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 
 
 export default function Header() {
+  // Safely call useAuthState only if auth is initialized
   const [user, loading, error] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
   const { toast } = useToast();
   const router = useRouter();
@@ -83,6 +84,15 @@ export default function Header() {
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <LanguageSwitcher />
 
+           {/* Favorites Icon - Show only if logged in */}
+           {isClient && user && (
+               <Button variant="ghost" size="icon" asChild>
+                 <Link href="/favorites" aria-label="View Favorites">
+                   <Heart className="h-[1.2rem] w-[1.2rem]" />
+                 </Link>
+               </Button>
+           )}
+
           {/* Only render auth-dependent part on the client */}
           {isClient ? (
             loading ? (
@@ -113,9 +123,6 @@ export default function Header() {
              // Render a placeholder (e.g., Skeleton) on the server and before hydration
              <Skeleton className="h-9 w-24 rounded-md" /> // Placeholder for button/avatar area
           )}
-          {/* Auth error indicator - only render on client if error exists */}
-          {/* Removing the error indicator directly in header to avoid hydration mismatch */}
-          {/* {isClient && error && <span className='text-destructive text-xs ml-2'>!</span>} */}
         </div>
       </div>
 
@@ -130,3 +137,5 @@ export default function Header() {
     </header>
   );
 }
+
+    
