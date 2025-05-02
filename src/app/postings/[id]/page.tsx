@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,7 +13,7 @@ import Link from "next/link";
 import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Import useEffect
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 // Import Swiper styles - **NOTE: Requires `npm install swiper`**
@@ -31,7 +30,7 @@ interface Posting {
     title?: string;
     category?: string;
     location?: string;
-    budget?: string; // Can be a single price, range, or text
+    budget?: string; // Original budget/price set by poster
     description?: string;
     imageUrls?: string[];
     canBid?: boolean;
@@ -42,12 +41,14 @@ interface Posting {
     createdAt?: any;
     postType?: 'need' | 'offer';
     urgency?: 'low' | 'medium' | 'high' | 'urgent';
-    // Hypothetical fields for bidding range - adjust based on your actual data model
-    minBid?: number;
-    maxBid?: number;
+    // Simulated current bid range - In real app, fetch this dynamically
+    currentMinBid?: number;
+    currentMaxBid?: number;
+    numberOfBids?: number; // Optional: show how many bids
 }
 
 // Mock Data - Replace with actual data fetching
+// Added simulated currentMinBid, currentMaxBid, numberOfBids
 const ad: Posting = {
   id: 'mockPost123',
   title: 'Need Urgent Repair for Leaky Roof (Mock)',
@@ -55,7 +56,7 @@ const ad: Posting = {
   category: 'services',
   postType: 'need',
   location: 'South Delhi, Delhi',
-  budget: '₹5,000 - ₹8,000', // Example budget range
+  budget: 'Poster Budget: ₹5,000 - ₹8,000', // Clarify original budget
   urgency: 'urgent',
   imageUrls: [
     'https://picsum.photos/seed/roofleak/800/600',
@@ -68,66 +69,64 @@ const ad: Posting = {
   canBid: true,
   canNegotiate: true,
   status: 'active',
-  // Example bid values - replace with actual data fetching
-  minBid: 5000,
-  maxBid: 8000,
+  // Example bid values - **Replace with actual data fetching from Firestore bids subcollection**
+  currentMinBid: 4500, // Simulate lowest current bid
+  currentMaxBid: 6200, // Simulate highest current bid
+  numberOfBids: 5, // Simulate number of bids received
 };
 
 
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
-    // TODO: Fetch actual ad data based on params.id
+    // TODO: Fetch actual ad data based on params.id and bid data from subcollection
     // const { data: ad, isLoading, error } = useQuery(['posting', params.id], fetchPosting);
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
     const [user, authLoading] = useAuthState(auth);
     const router = useRouter();
+    const [isClient, setIsClient] = useState(false);
+
+    useEffect(() => {
+        setIsClient(true); // Component has mounted
+    }, []);
+
 
     // Convert Firestore timestamp if needed
     const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
 
-    // Parse budget for bid range (example logic, adapt as needed)
-    const parseBidRange = (budget: string | undefined): { min?: number, max?: number, display: string } => {
-        if (!budget) return { display: 'N/A' };
-        const match = budget.match(/₹?([\d,]+)\s*-\s*₹?([\d,]+)/);
-        if (match) {
-            const min = parseInt(match[1].replace(/,/g, ''));
-            const max = parseInt(match[2].replace(/,/g, ''));
-            return { min, max, display: budget };
-        }
-        // Handle single price or text
-        return { display: budget };
-    };
+    // Use the simulated or fetched current bid values
+    const minBidDisplay = ad.currentMinBid;
+    const maxBidDisplay = ad.currentMaxBid;
 
-    const bidRange = parseBidRange(ad.budget);
-    const minBidDisplay = ad.minBid || bidRange.min;
-    const maxBidDisplay = ad.maxBid || bidRange.max;
-
-    // Handlers remain the same
-    const handleBidSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    // Handlers remain the same for simulation
+    const handleBidSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!user) return toast({ title: "Login Required", variant: "destructive" });
         setIsLoading(true);
         console.log("Submitting bid...");
-        setTimeout(() => {
-             toast({ description: "Bid submitted (Simulated)" });
-             setIsLoading(false);
-             (e.target as HTMLFormElement).reset();
-        }, 1000);
+        // TODO: Add logic to save bid to Firestore bids subcollection
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        toast({ description: "Bid submitted (Simulated)" });
+        setIsLoading(false);
+        (e.target as HTMLFormElement).reset();
     };
 
-     const handleNegotiateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+     const handleNegotiateSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!user) return toast({ title: "Login Required", variant: "destructive" });
         setIsLoading(true);
         console.log("Sending offer...");
-        setTimeout(() => {
-             toast({ description: "Offer sent (Simulated)" });
-             setIsLoading(false);
-             (e.target as HTMLFormElement).reset();
-        }, 1000);
+         // TODO: Implement negotiation logic (e.g., sending a chat message)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        toast({ description: "Offer sent (Simulated)" });
+        setIsLoading(false);
+        (e.target as HTMLFormElement).reset();
     };
 
-     const handleToggleFavorite = () => {
+     const handleToggleFavorite = async () => {
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
         console.log("Toggling favorite...");
+        // TODO: Implement actual Firestore favorite update logic
+        await new Promise(resolve => setTimeout(resolve, 500));
         toast({ description: "Favorite status toggled (Simulated)" });
      }
 
@@ -146,9 +145,11 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
         }
      }
 
-     const handleReport = () => {
+     const handleReport = async () => {
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
         console.log("Reporting ad...");
+        // TODO: Implement reporting logic (e.g., save report to Firestore)
+        await new Promise(resolve => setTimeout(resolve, 500));
         toast({ description: "Ad reported (Simulated)", variant: "destructive" });
      }
 
@@ -172,7 +173,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
 
     return (
         <div className="container mx-auto px-4 py-8">
-            {authLoading && <LoadingSpinner />}
+            {authLoading && <LoadingSpinner />} {/* Show spinner only while auth is loading */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
@@ -200,7 +201,7 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 )}
                             </div>
                              {ad.imageUrls && ad.imageUrls.length > 1 && (
-                                <p className="text-center text-xs text-muted-foreground p-1">(Carousel/Swipe functionality requires 'swiper' installation)</p>
+                                <p className="text-center text-xs text-muted-foreground p-1">(Image carousel not implemented)</p>
                              )}
 
                              <div className="absolute top-2 left-2 z-10">
@@ -221,23 +222,26 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                 <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {ad.location || 'N/A'}</span>
                                 <span className="flex items-center gap-1"><Tag className="h-4 w-4" /> {ad.category || 'N/A'}</span>
                             </div>
-                             {/* Display Budget/Price */}
-                             <p className="font-semibold text-lg text-primary pt-3 flex items-center gap-1">
-                                <IndianRupee className="h-5 w-5" /> {bidRange.display}
+                             {/* Display Poster's Original Budget */}
+                             <p className="text-sm text-muted-foreground pt-3">
+                                {ad.budget || 'No budget specified by poster'}
                              </p>
-                             {/* Display Min/Max Bid if applicable */}
+                             {/* Display Current Bid Range if applicable */}
                              {ad.canBid && (minBidDisplay || maxBidDisplay) && (
-                                <div className="flex gap-4 pt-2 text-sm text-muted-foreground">
-                                    {minBidDisplay && (
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-base font-semibold text-primary">
+                                     {minBidDisplay && (
                                          <span className="flex items-center gap-1">
                                              <ArrowDown className="h-4 w-4 text-green-600" /> Min Bid: ₹{minBidDisplay.toLocaleString()}
                                          </span>
-                                    )}
+                                     )}
                                      {maxBidDisplay && (
                                          <span className="flex items-center gap-1">
                                              <ArrowUp className="h-4 w-4 text-red-600" /> Max Bid: ₹{maxBidDisplay.toLocaleString()}
                                          </span>
-                                    )}
+                                     )}
+                                     {ad.numberOfBids !== undefined && (
+                                         <span className="text-sm font-normal text-muted-foreground">({ad.numberOfBids} bids)</span>
+                                     )}
                                 </div>
                             )}
                         </CardHeader>
@@ -262,18 +266,17 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                              {/* Bid Form */}
                              {ad?.canBid && (
                                 <form onSubmit={handleBidSubmit} className="border rounded-lg p-3 bg-muted/30 space-y-2">
-                                    <h4 className="text-sm font-medium">Submit a Bid</h4>
+                                    <h4 className="text-sm font-medium">Submit Your Bid</h4>
                                     <Input
                                         type="number"
                                         name="bidAmount"
-                                        placeholder={minBidDisplay || maxBidDisplay ? `Bid (₹${minBidDisplay || ''}${minBidDisplay && maxBidDisplay ? ' - ' : ''}${maxBidDisplay || ''})` : "Your Bid (₹)"}
+                                        placeholder={minBidDisplay || maxBidDisplay ? `Current Bid Range: ₹${minBidDisplay || '...'} - ₹${maxBidDisplay || '...'}` : "Your Bid (₹)"}
                                         required
-                                        min={minBidDisplay} // Add min/max attributes if available
-                                        max={maxBidDisplay}
+                                        // You might want validation against current min/max bid, but that's complex UI/logic
                                         className="mb-2 bg-background"
-                                        disabled={isLoading}
+                                        disabled={isLoading || authLoading || user?.uid === ad.userId}
                                     />
-                                    <Button size="sm" className="w-full" type="submit" disabled={isLoading}>
+                                    <Button size="sm" className="w-full" type="submit" disabled={isLoading || authLoading || user?.uid === ad.userId}>
                                        {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Submit Bid'}
                                     </Button>
                                 </form>
@@ -281,9 +284,9 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                              {/* Negotiate Form */}
                             {ad?.canNegotiate && (
                                 <form onSubmit={handleNegotiateSubmit} className="border rounded-lg p-3 bg-muted/30 space-y-2">
-                                     <h4 className="text-sm font-medium">Negotiate Price</h4>
-                                     <Input type="number" name="offerAmount" placeholder="Your Offer (₹)" required className="mb-2 bg-background" disabled={isLoading}/>
-                                     <Button size="sm" className="w-full" type="submit" disabled={isLoading}>
+                                     <h4 className="text-sm font-medium">Make an Offer</h4>
+                                     <Input type="number" name="offerAmount" placeholder="Your Offer (₹)" required className="mb-2 bg-background" disabled={isLoading || authLoading || user?.uid === ad.userId}/>
+                                     <Button size="sm" className="w-full" type="submit" disabled={isLoading || authLoading || user?.uid === ad.userId}>
                                          {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Send Offer'}
                                      </Button>
                                 </form>
@@ -329,4 +332,3 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             </div>
         </div>
     );
-}
