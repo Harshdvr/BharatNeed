@@ -7,22 +7,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Edit, IndianRupee, MapPin, Tag, Clock, MessageSquare, Heart, Share2, Flag, ChevronLeft, ChevronRight, ArrowDown, ArrowUp } from "lucide-react"; // Added Chevron, ArrowDown, ArrowUp icons
+import { Edit, IndianRupee, MapPin, Tag, Clock, MessageSquare, Heart, Share2, Flag, ChevronLeft, ChevronRight, ArrowDown, ArrowUp } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from '@/hooks/use-toast';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, firestore, ensureFirestoreInitialized } from '@/lib/firebase/clientApp';
-import { useState, useEffect } from 'react'; // Import useEffect
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, getDocs, deleteDoc, doc, getDoc, addDoc, serverTimestamp, onSnapshot, orderBy } from 'firebase/firestore'; // Added Firestore imports
 import { useRouter } from 'next/navigation';
-// Import Swiper styles - **NOTE: Requires `npm install swiper`**
-// import 'swiper/css';
-// import 'swiper/css/navigation';
-// import 'swiper/css/pagination';
-// Import Swiper React components - **NOTE: Requires `npm install swiper`**
-// import { Swiper, SwiperSlide } from 'swiper/react';
-// import { Navigation, Pagination } from 'swiper/modules';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Navigation, Pagination } from 'swiper/modules';
+
+// Import Swiper styles
+import 'swiper/css';
+import 'swiper/css/navigation';
+import 'swiper/css/pagination';
 
 interface Posting {
     id: string;
@@ -41,91 +41,181 @@ interface Posting {
     createdAt?: any;
     postType?: 'need' | 'offer';
     urgency?: 'low' | 'medium' | 'high' | 'urgent';
-    // Simulated current bid range - In real app, fetch this dynamically
-    currentMinBid?: number;
-    currentMaxBid?: number;
-    numberOfBids?: number; // Optional: show how many bids
+}
+
+// Interface for a Bid document
+interface Bid {
+    id: string;
+    bidderId: string;
+    bidAmount: number;
+    timestamp: any; // Firestore Timestamp
+    // Optional fields
+    bidderName?: string;
+    bidderAvatar?: string;
 }
 
 // Mock Data - Replace with actual data fetching
-// Added simulated currentMinBid, currentMaxBid, numberOfBids
-const ad: Posting = {
-  id: 'mockPost123',
-  title: 'Need Urgent Repair for Leaky Roof (Mock)',
-  description: 'Water leaking through the ceiling in the living room. Need a professional roofer immediately. Please provide quotes. Located in South Delhi.',
-  category: 'services',
+const initialAd: Posting = {
+  id: 'mockPost123', // This will be replaced by params.id
+  title: 'Loading Posting Details...',
+  description: 'Loading description...',
+  category: 'Loading...',
   postType: 'need',
-  location: 'South Delhi, Delhi',
-  budget: 'Poster Budget: ₹5,000 - ₹8,000', // Clarify original budget
-  urgency: 'urgent',
-  imageUrls: [
-    'https://picsum.photos/seed/roofleak/800/600',
-    'https://picsum.photos/seed/roofinside/800/600',
-    'https://picsum.photos/seed/damageclose/800/600',
-    'https://picsum.photos/seed/anotherangle/800/600' // Added another image
-  ],
-  userId: 'userMock1',
-  createdAt: new Date(Date.now() - 3600000 * 3), // 3 hours ago
+  location: 'Loading...',
+  budget: 'Loading...',
+  urgency: 'medium',
+  imageUrls: ['https://picsum.photos/800/600'], // Placeholder image
+  userId: '',
+  createdAt: null,
   canBid: true,
   canNegotiate: true,
   status: 'active',
-  // Example bid values - **Replace with actual data fetching from Firestore bids subcollection**
-  currentMinBid: 4500, // Simulate lowest current bid
-  currentMaxBid: 6200, // Simulate highest current bid
-  numberOfBids: 5, // Simulate number of bids received
 };
 
 
 export default function PostingDetailPage({ params }: { params: { id: string } }) {
-    // TODO: Fetch actual ad data based on params.id and bid data from subcollection
-    // const { data: ad, isLoading, error } = useQuery(['posting', params.id], fetchPosting);
-    const [isLoading, setIsLoading] = useState(false);
+    const [ad, setAd] = useState<Posting>(initialAd); // State for the posting details
+    const [bids, setBids] = useState<Bid[]>([]); // State for bids
+    const [isLoadingPost, setIsLoadingPost] = useState(true); // Loading state for post details
+    const [isLoadingBids, setIsLoadingBids] = useState(true); // Loading state for bids
+    const [isSubmittingBid, setIsSubmittingBid] = useState(false); // Loading state for bid submission
+    const [isSubmittingOffer, setIsSubmittingOffer] = useState(false); // Loading state for negotiation offer
     const { toast } = useToast();
     const [user, authLoading] = useAuthState(auth);
     const router = useRouter();
     const [isClient, setIsClient] = useState(false);
+    const [bidAmountInput, setBidAmountInput] = useState(''); // State for bid input field
+    const [offerAmountInput, setOfferAmountInput] = useState(''); // State for negotiation input
 
     useEffect(() => {
         setIsClient(true); // Component has mounted
     }, []);
 
+    // Fetch Posting Details
+    useEffect(() => {
+        if (!params.id || !firestore) return;
 
-    // Convert Firestore timestamp if needed
-    const datePostedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : 'N/A';
+        setIsLoadingPost(true);
+        const postRef = doc(firestore, 'postings', params.id);
 
-    // Use the simulated or fetched current bid values
-    const minBidDisplay = ad.currentMinBid;
-    const maxBidDisplay = ad.currentMaxBid;
+        const unsubscribe = onSnapshot(postRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setAd({ id: docSnap.id, ...docSnap.data() } as Posting);
+            } else {
+                console.error("Posting not found");
+                toast({ title: "Error", description: "Posting not found.", variant: "destructive" });
+                setAd(initialAd); // Reset or show error state
+            }
+            setIsLoadingPost(false);
+        }, (error) => {
+            console.error("Error fetching posting details:", error);
+            toast({ title: "Error", description: "Could not load posting details.", variant: "destructive" });
+            setIsLoadingPost(false);
+        });
 
-    // Handlers remain the same for simulation
+        // Cleanup listener on unmount
+        return () => unsubscribe();
+
+    }, [params.id, toast]);
+
+
+    // Fetch Bids in Real-time
+     useEffect(() => {
+        if (!params.id || !firestore) return;
+
+        setIsLoadingBids(true);
+        const bidsRef = collection(firestore, 'postings', params.id, 'bids');
+        const q = query(bidsRef, orderBy('bidAmount', 'asc')); // Order bids to easily find min/max
+
+        const unsubscribeBids = onSnapshot(q, (querySnapshot) => {
+            const fetchedBids = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
+            setBids(fetchedBids);
+            setIsLoadingBids(false);
+        }, (error) => {
+            console.error("Error fetching bids:", error);
+            toast({ title: "Error", description: "Could not load bids.", variant: "destructive" });
+            setIsLoadingBids(false);
+        });
+
+        // Cleanup listener on unmount
+        return () => unsubscribeBids();
+
+    }, [params.id, toast]);
+
+    // Calculate min, max, and count from bids state
+    const { minBid, maxBid, bidCount } = useMemo(() => {
+        if (!bids || bids.length === 0) {
+            return { minBid: undefined, maxBid: undefined, bidCount: 0 };
+        }
+        const amounts = bids.map(b => b.bidAmount);
+        return {
+            minBid: Math.min(...amounts),
+            maxBid: Math.max(...amounts),
+            bidCount: bids.length,
+        };
+    }, [bids]);
+
+
+    const datePostedFormatted = ad.createdAt instanceof Date
+        ? ad.createdAt.toLocaleDateString()
+        : ad.createdAt?.toDate
+        ? ad.createdAt.toDate().toLocaleDateString()
+        : 'N/A';
+
+
+    // Updated Bid Submission Handler
     const handleBidSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
-        setIsLoading(true);
-        console.log("Submitting bid...");
-        // TODO: Add logic to save bid to Firestore bids subcollection
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        toast({ description: "Bid submitted (Simulated)" });
-        setIsLoading(false);
-        (e.target as HTMLFormElement).reset();
+        if (!bidAmountInput || isNaN(parseFloat(bidAmountInput)) || parseFloat(bidAmountInput) <= 0) {
+             return toast({ title: "Invalid Bid", description: "Please enter a valid bid amount.", variant: "destructive"});
+        }
+
+        const bidAmount = parseFloat(bidAmountInput);
+        setIsSubmittingBid(true);
+        console.log("Submitting bid:", bidAmount);
+
+        try {
+            const fs = ensureFirestoreInitialized();
+            const bidsCollectionRef = collection(fs, 'postings', params.id, 'bids');
+            await addDoc(bidsCollectionRef, {
+                bidderId: user.uid,
+                bidAmount: bidAmount,
+                timestamp: serverTimestamp(),
+                // Optional: Add bidder name/avatar if needed for display, fetch from user profile
+                bidderName: user.displayName || 'Anonymous',
+            });
+            toast({ description: "Bid submitted successfully!" });
+            setBidAmountInput(''); // Clear input field
+        } catch (error: any) {
+             console.error("Error submitting bid:", error);
+             toast({ title: "Error", description: `Could not submit bid. ${error.message}`, variant: "destructive" });
+        } finally {
+             setIsSubmittingBid(false);
+        }
     };
 
      const handleNegotiateSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!user) return toast({ title: "Login Required", variant: "destructive" });
-        setIsLoading(true);
-        console.log("Sending offer...");
-         // TODO: Implement negotiation logic (e.g., sending a chat message)
+         // Basic validation
+         if (!offerAmountInput || isNaN(parseFloat(offerAmountInput)) || parseFloat(offerAmountInput) <= 0) {
+            return toast({ title: "Invalid Offer", description: "Please enter a valid offer amount.", variant: "destructive"});
+         }
+        const offerAmount = parseFloat(offerAmountInput);
+        setIsSubmittingOffer(true);
+        console.log("Sending offer...", offerAmount);
+         // TODO: Implement negotiation logic (e.g., sending a chat message with the offer)
         await new Promise(resolve => setTimeout(resolve, 1000));
-        toast({ description: "Offer sent (Simulated)" });
-        setIsLoading(false);
-        (e.target as HTMLFormElement).reset();
+        toast({ description: `Offer of ₹${offerAmount} sent (Simulated)` });
+        setOfferAmountInput(''); // Clear input field
+        setIsSubmittingOffer(false);
     };
 
      const handleToggleFavorite = async () => {
-        if (!user) return toast({ title: "Login Required", variant: "destructive" });
+        if (!user || !firestore) return toast({ title: "Login Required", variant: "destructive" });
         console.log("Toggling favorite...");
-        // TODO: Implement actual Firestore favorite update logic
+        // TODO: Implement actual Firestore favorite update logic in user's profile
         await new Promise(resolve => setTimeout(resolve, 500));
         toast({ description: "Favorite status toggled (Simulated)" });
      }
@@ -140,8 +230,12 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             .then(() => console.log('Successful share'))
             .catch((error) => console.log('Error sharing', error));
         } else {
-            navigator.clipboard.writeText(window.location.href);
-            toast({ description: "Link copied to clipboard!" });
+             try {
+                navigator.clipboard.writeText(window.location.href);
+                toast({ description: "Link copied to clipboard!" });
+             } catch (err) {
+                toast({ description: "Could not copy link.", variant: "destructive"});
+             }
         }
      }
 
@@ -170,77 +264,91 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
          router.push(`/chat?contact=${ad.userId}&post=${ad.id}`);
      }
 
+     // Show main loading spinner if post details or auth state is loading initially
+     if (isLoadingPost || authLoading) {
+         return <div className="flex justify-center items-center min-h-[60vh]"><LoadingSpinner /></div>;
+     }
 
     return (
         <div className="container mx-auto px-4 py-8">
-            {authLoading && <LoadingSpinner />} {/* Show spinner only while auth is loading */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                 {/* Left Column (Image & Description) */}
                 <div className="md:col-span-2 space-y-6">
                     {/* Image Gallery */}
                     <Card className="overflow-hidden shadow-md relative group">
-                            <div className="relative aspect-[4/3] bg-muted">
-                                <Image
-                                    src={ad.imageUrls?.[0] || 'https://picsum.photos/800/600'}
-                                    alt={ad.title || 'Posting image'}
-                                    fill
-                                    style={{ objectFit: 'cover' }}
-                                    priority
-                                    data-ai-hint="posting detail image"
-                                />
-                                {/* Simple static buttons for placeholder */}
-                                {ad.imageUrls && ad.imageUrls.length > 1 && (
-                                    <>
-                                        <Button variant="ghost" size="icon" className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground">
-                                            <ChevronLeft/>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-background/50 hover:bg-background/80 text-foreground">
-                                            <ChevronRight/>
-                                        </Button>
-                                    </>
-                                )}
-                            </div>
-                             {ad.imageUrls && ad.imageUrls.length > 1 && (
-                                <p className="text-center text-xs text-muted-foreground p-1">(Image carousel not implemented)</p>
-                             )}
-
-                             <div className="absolute top-2 left-2 z-10">
-                                <Badge
-                                    variant={ad.postType === 'need' ? 'destructive' : 'default'}
-                                    className="text-xs py-0.5 px-1.5 rounded-sm shadow"
-                                >
-                                    {ad.postType === 'need' ? 'Need' : 'Offer'}
-                                </Badge>
-                             </div>
+                           {isClient && ad.imageUrls && ad.imageUrls.length > 0 ? (
+                               <Swiper
+                                   modules={[Navigation, Pagination]}
+                                   spaceBetween={0}
+                                   slidesPerView={1}
+                                   navigation
+                                   pagination={{ clickable: true }}
+                                   className="relative aspect-[4/3] bg-muted" // Use aspect ratio for consistent size
+                               >
+                                   {ad.imageUrls.map((url, index) => (
+                                       <SwiperSlide key={index}>
+                                           <div className="relative w-full h-full">
+                                                <Image
+                                                    src={url || 'https://picsum.photos/800/600'}
+                                                    alt={`${ad.title || 'Posting image'} ${index + 1}`}
+                                                    fill
+                                                    style={{ objectFit: 'cover' }}
+                                                    priority={index === 0} // Prioritize first image
+                                                    sizes="(max-width: 768px) 100vw, 66vw"
+                                                    data-ai-hint="posting detail image"
+                                                />
+                                           </div>
+                                       </SwiperSlide>
+                                   ))}
+                                    <div className="absolute top-2 left-2 z-10">
+                                        <Badge
+                                            variant={ad.postType === 'need' ? 'destructive' : 'default'}
+                                            className="text-xs py-0.5 px-1.5 rounded-sm shadow"
+                                        >
+                                            {ad.postType === 'need' ? 'Need' : 'Offer'}
+                                        </Badge>
+                                    </div>
+                               </Swiper>
+                           ) : (
+                               <div className="relative aspect-[4/3] bg-muted flex items-center justify-center">
+                                   <LoadingSpinner showText={false} />
+                               </div>
+                           )}
                     </Card>
 
                     {/* Ad Details */}
                     <Card className="shadow-md">
                         <CardHeader>
-                            <CardTitle className="text-2xl">{ad.title || 'Untitled Post'}</CardTitle>
+                            <CardTitle className="text-2xl">{ad.title || 'Loading...'}</CardTitle>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground pt-2">
                                 <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {ad.location || 'N/A'}</span>
                                 <span className="flex items-center gap-1"><Tag className="h-4 w-4" /> {ad.category || 'N/A'}</span>
                             </div>
                              {/* Display Poster's Original Budget */}
                              <p className="text-sm text-muted-foreground pt-3">
-                                {ad.budget || 'No budget specified by poster'}
+                                {ad.budget || 'No budget specified'}
                              </p>
                              {/* Display Current Bid Range if applicable */}
-                             {ad.canBid && (minBidDisplay || maxBidDisplay) && (
+                             {ad.canBid && (
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-base font-semibold text-primary">
-                                     {minBidDisplay && (
-                                         <span className="flex items-center gap-1">
-                                             <ArrowDown className="h-4 w-4 text-green-600" /> Min Bid: ₹{minBidDisplay.toLocaleString()}
-                                         </span>
-                                     )}
-                                     {maxBidDisplay && (
-                                         <span className="flex items-center gap-1">
-                                             <ArrowUp className="h-4 w-4 text-red-600" /> Max Bid: ₹{maxBidDisplay.toLocaleString()}
-                                         </span>
-                                     )}
-                                     {ad.numberOfBids !== undefined && (
-                                         <span className="text-sm font-normal text-muted-foreground">({ad.numberOfBids} bids)</span>
+                                     {isLoadingBids ? (
+                                         <span className="text-sm font-normal text-muted-foreground">Loading bids...</span>
+                                     ) : bidCount > 0 ? (
+                                         <>
+                                             {minBid && (
+                                                 <span className="flex items-center gap-1">
+                                                     <ArrowDown className="h-4 w-4 text-green-600" /> Min Bid: ₹{minBid.toLocaleString()}
+                                                 </span>
+                                             )}
+                                             {maxBid && (
+                                                 <span className="flex items-center gap-1">
+                                                     <ArrowUp className="h-4 w-4 text-red-600" /> Max Bid: ₹{maxBid.toLocaleString()}
+                                                 </span>
+                                             )}
+                                             <span className="text-sm font-normal text-muted-foreground">({bidCount} bid{bidCount !== 1 ? 's' : ''})</span>
+                                         </>
+                                     ) : (
+                                        <span className="text-sm font-normal text-muted-foreground">No bids yet.</span>
                                      )}
                                 </div>
                             )}
@@ -270,14 +378,17 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                                     <Input
                                         type="number"
                                         name="bidAmount"
-                                        placeholder={minBidDisplay || maxBidDisplay ? `Current Bid Range: ₹${minBidDisplay || '...'} - ₹${maxBidDisplay || '...'}` : "Your Bid (₹)"}
+                                        placeholder={bidCount > 0 ? `Current: ₹${minBid || '?'} - ₹${maxBid || '?'}` : "Your Bid Amount (₹)"}
                                         required
-                                        // You might want validation against current min/max bid, but that's complex UI/logic
+                                        min="0" // Ensure non-negative bids
+                                        step="any" // Allow decimals if needed
+                                        value={bidAmountInput}
+                                        onChange={(e) => setBidAmountInput(e.target.value)}
                                         className="mb-2 bg-background"
-                                        disabled={isLoading || authLoading || user?.uid === ad.userId}
+                                        disabled={isSubmittingBid || authLoading || user?.uid === ad.userId}
                                     />
-                                    <Button size="sm" className="w-full" type="submit" disabled={isLoading || authLoading || user?.uid === ad.userId}>
-                                       {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Submit Bid'}
+                                    <Button size="sm" className="w-full" type="submit" disabled={isSubmittingBid || authLoading || user?.uid === ad.userId}>
+                                       {isSubmittingBid ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Submit Bid'}
                                     </Button>
                                 </form>
                             )}
@@ -285,33 +396,43 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                             {ad?.canNegotiate && (
                                 <form onSubmit={handleNegotiateSubmit} className="border rounded-lg p-3 bg-muted/30 space-y-2">
                                      <h4 className="text-sm font-medium">Make an Offer</h4>
-                                     <Input type="number" name="offerAmount" placeholder="Your Offer (₹)" required className="mb-2 bg-background" disabled={isLoading || authLoading || user?.uid === ad.userId}/>
-                                     <Button size="sm" className="w-full" type="submit" disabled={isLoading || authLoading || user?.uid === ad.userId}>
-                                         {isLoading ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Send Offer'}
+                                     <Input
+                                        type="number"
+                                        name="offerAmount"
+                                        placeholder="Your Offer Amount (₹)"
+                                        required
+                                        min="0"
+                                        step="any"
+                                        value={offerAmountInput}
+                                        onChange={(e) => setOfferAmountInput(e.target.value)}
+                                        className="mb-2 bg-background"
+                                        disabled={isSubmittingOffer || authLoading || user?.uid === ad.userId}/>
+                                     <Button size="sm" className="w-full" type="submit" disabled={isSubmittingOffer || authLoading || user?.uid === ad.userId}>
+                                         {isSubmittingOffer ? <LoadingSpinner showText={false} className="h-4 w-4"/> : 'Send Offer'}
                                      </Button>
                                 </form>
                             )}
                              {/* Contact Button */}
-                             <Button variant="default" className="w-full" onClick={handleContactSeller} disabled={isLoading || authLoading || user?.uid === ad.userId}>
+                             <Button variant="default" className="w-full" onClick={handleContactSeller} disabled={authLoading || user?.uid === ad.userId}>
                                  <MessageSquare className="mr-2 h-4 w-4" />
                                  {user?.uid === ad.userId ? "Your Post" : "Contact Poster"}
                              </Button>
                               {/* Other Actions */}
                              <div className="grid grid-cols-3 gap-2">
-                                 <Button variant="outline" size="sm" className="w-full" onClick={handleToggleFavorite} disabled={isLoading || authLoading}>
+                                 <Button variant="outline" size="sm" className="w-full" onClick={handleToggleFavorite} disabled={authLoading}>
                                      <Heart className="mr-1 h-4 w-4" /> Favorite
                                  </Button>
-                                 <Button variant="outline" size="sm" className="w-full" onClick={handleShare} disabled={isLoading}>
+                                 <Button variant="outline" size="sm" className="w-full" onClick={handleShare}>
                                      <Share2 className="mr-1 h-4 w-4" /> Share
                                  </Button>
-                                 <Button variant="outline" size="sm" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleReport} disabled={isLoading || authLoading}>
+                                 <Button variant="outline" size="sm" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleReport} disabled={authLoading}>
                                       <Flag className="mr-1 h-4 w-4" /> Report
                                  </Button>
                              </div>
                         </CardContent>
                      </Card>
 
-                     {/* User Info Card */}
+                     {/* User Info Card - TODO: Fetch actual poster info */}
                      <Card className="shadow-md">
                         <CardHeader>
                             <CardTitle>Poster Information</CardTitle>
@@ -319,12 +440,15 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
                         </CardHeader>
                         <CardContent className="flex items-center gap-4">
                              <Avatar className="h-12 w-12">
-                                <AvatarImage src="https://picsum.photos/id/102/100/100" alt="Seller Avatar" data-ai-hint="seller avatar"/>
-                                <AvatarFallback>SN</AvatarFallback>
+                                {/* TODO: Replace with actual poster avatar */}
+                                <AvatarImage src="https://avatar.vercel.sh/poster-uid.png" alt="Poster Avatar" data-ai-hint="seller avatar"/>
+                                <AvatarFallback>{ad.userId?.charAt(0)?.toUpperCase() || 'P'}</AvatarFallback>
                             </Avatar>
                             <div>
-                                <p className="font-semibold">Seller Name (Mock)</p>
-                                <p className="text-xs text-muted-foreground">Member since Mock Date</p>
+                                {/* TODO: Replace with actual poster name */}
+                                <p className="font-semibold">Poster Name (Loading...)</p>
+                                {/* TODO: Replace with actual member since date */}
+                                <p className="text-xs text-muted-foreground">Member since Loading...</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -332,3 +456,4 @@ export default function PostingDetailPage({ params }: { params: { id: string } }
             </div>
         </div>
     );
+}
