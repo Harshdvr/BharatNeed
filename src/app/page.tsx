@@ -1,4 +1,3 @@
-
 'use client'; // Required for useState, useEffect and useAuthState
 
 import { useState, useEffect, useMemo } from 'react';
@@ -6,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/loading-spinner";
-import { Plus, Search as SearchIcon, MessageSquare, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react'; // Keep Plus for potential future use
+import { Plus, Search as SearchIcon, MessageSquare, MapPin, Clock, Tag, IndianRupee, Heart } from 'lucide-react';
 import Link from "next/link";
 import Image from "next/image";
 import { useToast } from '@/hooks/use-toast';
@@ -304,8 +303,9 @@ export default function Home() {
   const [userFavorites, setUserFavorites] = useState<string[]>([]);
   const { toast } = useToast();
   const searchParams = useSearchParams(); // Use the hook
+  const categoryParam = searchParams?.get('category'); // Get category from URL
   const [firestoreInitialized, setFirestoreInitialized] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryParam);
   const [currentUserLocation, setCurrentUserLocation] = useState<string | null>(null);
 
   const [personalizedFeed, setPersonalizedFeed] = useState<any[]>([]);
@@ -327,7 +327,13 @@ export default function Home() {
       }, 2000);
       return () => clearTimeout(timeoutId);
     }
-  }, []); // Removed firestore from dependency array
+  }, []);
+
+   useEffect(() => {
+    // Update selected category based on URL parameter
+    setSelectedCategory(categoryParam);
+  }, [categoryParam]);
+
 
    useEffect(() => {
     const fetchData = async () => {
@@ -343,7 +349,6 @@ export default function Home() {
              const currentUser = authInstance.currentUser; // Use currentUser from the initialized auth instance
              if (!currentUser) {
                  console.warn("User not available yet for fetching profile.");
-                 // Potentially set loading state or return early
              } else {
                  const userDocRef = doc(fs, 'users', currentUser.uid);
                  const userDocSnap = await getDoc(userDocRef);
@@ -360,7 +365,7 @@ export default function Home() {
              if (error.code === 'unavailable' || error.message.includes('offline')) {
                  toast({ title: "Offline", description: "Could not load user data. Showing default content.", variant: "default" });
              } else {
-                // toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
+                 toast({ title: "Error", description: "Could not load user profile.", variant: "destructive" });
              }
            }
          }
@@ -373,7 +378,7 @@ export default function Home() {
           try {
             const fs = ensureFirestoreInitialized();
             const postingsRef = collection(fs, 'postings');
-            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(100));
+            const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(100)); // Fetch more for algorithm
             const querySnapshot = await getDocs(q);
             fetchedPostings = querySnapshot.docs.map(doc => ({
               id: doc.id,
@@ -388,7 +393,7 @@ export default function Home() {
                  fetchedPostings = mockPostings; // Fallback to mock data
                  setAllPostings(fetchedPostings);
             } else {
-                // toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
+                 toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
                  fetchedPostings = mockPostings; // Fallback to mock data
                  setAllPostings(fetchedPostings);
             }
@@ -399,31 +404,13 @@ export default function Home() {
             console.log("Using mock postings as Firestore is not initialized.");
         }
 
-         // Add isFavorite flag based on current user's favorites
-        const postingsWithFavorites = allPostings.map(p => ({
-            ...p,
-            isFavorite: fetchedUserFavorites.includes(p.id),
-            // TODO: Add recentlyViewed flag based on user history
-            // For now, using the mock flag
-            recentlyViewed: p.recentlyViewed || false
-        }));
-
-
-        // --- 4 & 5. Apply Feed Algorithm and Separate Recently Viewed ---
-        // Pass selectedCategory to getPersonalizedFeed
-        const feed = getPersonalizedFeed(postingsWithFavorites, fetchedUserLocation, mockUserPreferences, selectedCategory);
-        setPersonalizedFeed(feed);
-
-        const recentViews = getRecentlyViewedFeed(postingsWithFavorites);
-        setRecentlyViewedPostings(recentViews);
-
         setIsLoading(false);
     };
 
-    // Fetch data when component mounts, user changes, category changes, or Firestore becomes ready
+    // Fetch data when component mounts, user changes, or Firestore becomes ready
     fetchData();
 
-  }, [user, selectedCategory, firestoreInitialized, toast]); // Add selectedCategory
+  }, [user, firestoreInitialized, toast]); // Removed selectedCategory from here
 
 
   // Handle favoriting logic
@@ -447,7 +434,7 @@ export default function Home() {
      setAllPostings(prev => // Update the main source of truth
         prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
      );
-     // Update derived feeds
+     // Update derived feeds immediately based on the change
      setPersonalizedFeed(prev =>
        prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
      );
@@ -500,7 +487,6 @@ export default function Home() {
   useEffect(() => {
     if (authError && !authLoading) {
       console.error("Firebase Auth Hook Error:", authError);
-      // toast({ title: "Authentication Error", description: "Could not verify user.", variant: "destructive" });
     }
   }, [authError, authLoading, toast]);
 
@@ -519,7 +505,7 @@ export default function Home() {
         const recentViews = getRecentlyViewedFeed(postingsWithFavorites);
         setRecentlyViewedPostings(recentViews);
     }
-  }, [allPostings, selectedCategory, userFavorites, currentUserLocation]); // Add dependencies
+  }, [allPostings, selectedCategory, userFavorites, currentUserLocation]); // Added dependencies
 
 
   return (
@@ -660,13 +646,7 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
     let formattedDate = 'N/A';
     if (createdAtDate) {
        try {
-         // Use strict formatting for closer times, fallback to broader terms
-         formattedDate = formatDistanceToNowStrict(createdAtDate, { addSuffix: true });
-         const minutesAgo = (new Date().getTime() - createdAtDate.getTime()) / (1000 * 60);
-         if (minutesAgo < 1) formattedDate = 'Just now';
-         else if (minutesAgo < 60) formattedDate = `${Math.round(minutesAgo)}m ago`;
-         else if (minutesAgo < 60 * 24) formattedDate = `${Math.round(minutesAgo / 60)}h ago`;
-         // formatDistanceToNowStrict handles days/months/years
+         formattedDate = formatRelativeTime(createdAtDate);
        } catch (e) {
          console.error("Error formatting date:", e);
          formattedDate = createdAtDate.toLocaleDateString(); // Fallback
@@ -756,27 +736,22 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
 }
 
 
-// Function to parse date strings or Firestore Timestamps
-function safeParseDate(dateInput: any): Date | null {
-  if (!dateInput) return null;
-  if (dateInput instanceof Date) return dateInput;
-  // Handle Firestore Timestamps
-  if (typeof dateInput === 'object' && dateInput !== null && typeof dateInput.toDate === 'function') {
-    try {
-      return dateInput.toDate();
-    } catch (e) {
-      console.error("Error converting Firestore Timestamp:", e);
-      return null;
-    }
-  }
-  // Handle string or number timestamps
-  try {
-    const date = new Date(dateInput);
-    return isNaN(date.getTime()) ? null : date;
-  } catch (e) {
-    console.error("Error parsing date input:", e);
-    return null;
-  }
-}
+// Function to format relative time nicely
+function formatRelativeTime(date: Date): string {
+   const now = new Date();
+   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+   const diffInMinutes = Math.floor(diffInSeconds / 60);
+   const diffInHours = Math.floor(diffInMinutes / 60);
+   const diffInDays = Math.floor(diffInHours / 24);
+   const diffInWeeks = Math.floor(diffInDays / 7);
+   const diffInMonths = Math.floor(diffInDays / 30); // Approximate
+   const diffInYears = Math.floor(diffInDays / 365); // Approximate
 
-    
+   if (diffInSeconds < 60) return 'Just now';
+   if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+   if (diffInHours < 24) return `${diffInHours}h ago`;
+   if (diffInDays < 7) return `${diffInDays}d ago`;
+   if (diffInWeeks < 4) return `${diffInWeeks}w ago`;
+   if (diffInMonths < 12) return `${diffInMonths}m ago`;
+   return `${diffInYears}y ago`;
+}
