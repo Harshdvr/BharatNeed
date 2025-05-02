@@ -33,8 +33,8 @@ const mockPostings = [
     imageUrls: ['https://picsum.photos/seed/plumberleak/300/200'],
     createdAt: new Date(Date.now() - 3600000), // 1 hour ago (Recent)
     isFavorite: false,
-    // featured: true, // Removed featured for OLX-like sorting
     views: 10, // Example engagement
+    saves: 2, // Example engagement
   },
   {
     id: 'mock2',
@@ -48,8 +48,8 @@ const mockPostings = [
     imageUrls: ['https://picsum.photos/seed/tiffin/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 4), // 4 days ago
     isFavorite: false,
-    // featured: true,
     views: 50,
+    saves: 5,
   },
   {
     id: 'mock3',
@@ -63,8 +63,8 @@ const mockPostings = [
     imageUrls: ['https://picsum.photos/seed/terracotta/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 7), // 7 days ago
     isFavorite: false,
-    // featured: true,
     views: 30,
+    saves: 1,
   },
     {
     id: 'mock4',
@@ -78,8 +78,8 @@ const mockPostings = [
     imageUrls: ['https://picsum.photos/seed/mangoes/300/200'],
     createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
     isFavorite: false,
-    // featured: true,
     views: 80, // Higher views
+    saves: 10,
   },
    // Add mock data for Recently Viewed - can duplicate or add new ones
    {
@@ -96,6 +96,7 @@ const mockPostings = [
     isFavorite: false,
     recentlyViewed: true, // Flag for this section
     views: 25,
+    saves: 0,
   },
    {
     id: 'mock6',
@@ -111,6 +112,7 @@ const mockPostings = [
     isFavorite: false,
      recentlyViewed: true,
      views: 40,
+     saves: 3,
   },
    {
     id: 'mock7',
@@ -126,6 +128,7 @@ const mockPostings = [
     isFavorite: false,
      recentlyViewed: true,
      views: 15,
+     saves: 1,
   },
    { // Duplicating plumber for recently viewed, assume user viewed it
     id: 'mock8',
@@ -141,6 +144,7 @@ const mockPostings = [
     isFavorite: false,
      recentlyViewed: true,
      views: 10,
+     saves: 2,
   },
 ];
 
@@ -149,28 +153,67 @@ const mockPostings = [
 
 // Mock User Data (Replace with actual data fetching)
 const mockUserLocation = "Koramangala, Bangalore"; // Example user location
+const mockUserPreferences = { // Example preferences (replace with actual logic)
+    categories: ['services', 'buy/sell'],
+    keywords: ['repair', 'used', 'homemade'],
+};
 
 // Simplified Proximity Check (Replace with actual distance calculation)
 const isNearby = (postLocation: string | undefined, userLocation: string | null, radiusKm: number = 15): boolean => {
   if (!postLocation || !userLocation) return false;
   // VERY basic check for demo purposes - replace with Haversine formula or GeoFirestore query
-  return postLocation.toLowerCase().includes(userLocation.split(',')[0].toLowerCase());
+  // Comparing first part (city/area)
+  const postCity = postLocation.split(',')[0].trim().toLowerCase();
+  const userCity = userLocation.split(',')[0].trim().toLowerCase();
+  return postCity === userCity;
 };
+
+// Check if post is recent (e.g., within last 48 hours)
+const isRecent = (createdAt: any): boolean => {
+    const postDate = createdAt instanceof Date ? createdAt : createdAt?.toDate ? createdAt.toDate() : null;
+    if (!postDate) return false;
+    const hoursSincePost = (new Date().getTime() - postDate.getTime()) / (1000 * 60 * 60);
+    return hoursSincePost <= 48; // Definition of "New" for badge
+};
+
+// Check if post is trending (simple example: high views or saves)
+const isTrending = (post: any): boolean => {
+    const viewsThreshold = 50;
+    const savesThreshold = 5;
+    return (post.views || 0) >= viewsThreshold || (post.saves || 0) >= savesThreshold;
+}
+
+// Check if post category matches user preferences
+const isCategoryMatch = (postCategory: string | undefined, userCategories: string[]): boolean => {
+    if (!postCategory) return false;
+    return userCategories.includes(postCategory.toLowerCase());
+}
+
+// Check if post title contains user keywords (basic)
+const isKeywordMatch = (postTitle: string | undefined, userKeywords: string[]): boolean => {
+    if (!postTitle) return false;
+    const titleLower = postTitle.toLowerCase();
+    return userKeywords.some(keyword => titleLower.includes(keyword.toLowerCase()));
+}
 
 
 // Updated Scoring Function (OLX-like priorities)
-const calculateScore = (post: any, userLocation: string | null): number => {
+const calculateScore = (post: any, userLocation: string | null, userPrefs: typeof mockUserPreferences): number => {
   let score = 0;
-  const now = new Date();
   const postDate = post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date();
-  const hoursSincePost = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60);
+  const hoursSincePost = (new Date().getTime() - postDate.getTime()) / (1000 * 60 * 60);
 
-  // 1. Proximity Bonus (Highest Weight: 7) - Using basic nearby check
+  // 1. Proximity Bonus (Highest Weight: 7)
   if (isNearby(post.location, userLocation)) {
     score += 7;
   }
 
-  // 2. Recency Bonus (Weight: 3)
+  // 2. Category Match Bonus (Weight: 5)
+  if (isCategoryMatch(post.category, userPrefs.categories)) {
+      score += 5;
+  }
+
+  // 3. Recency Bonus (Weight: 3) - Higher for very recent
   if (hoursSincePost <= 24) { // Within 1 day
     score += 3;
   } else if (hoursSincePost <= 72) { // Within 3 days
@@ -178,15 +221,23 @@ const calculateScore = (post: any, userLocation: string | null): number => {
   }
   // Older posts get 0 recency bonus
 
-  // 3. Image Bonus (Weight: 2) - OLX prioritizes posts with images
-  if (post.imageUrls && post.imageUrls.length > 0) {
-    score += 2;
+   // 4. Image Bonus (Weight: 2) - Prioritize posts with images
+   if (post.imageUrls && post.imageUrls.length > 0) {
+     score += 2;
+   }
+
+  // 5. Keyword Match Bonus (Weight: 3)
+   if (isKeywordMatch(post.title, userPrefs.keywords)) {
+       score += 3;
+   }
+
+  // 6. Trending Bonus (Based on simple thresholds, Weight: 4)
+  if (isTrending(post)) {
+      score += 4;
   }
 
-  // 4. Engagement Bonus (Optional, lower weight: 1) - Simple view count example
-   score += Math.min((post.views || 0) / 50, 1); // Add up to 1 point based on views (capped)
-
-  // Removed category/keyword match for simplicity, aligning closer to OLX's location/recency focus
+  // Optional: Add a small base score or decay older posts further
+  // score -= Math.floor(hoursSincePost / (24 * 7)); // Example: decay weekly
 
   return score;
 };
@@ -195,16 +246,23 @@ const calculateScore = (post: any, userLocation: string | null): number => {
 const getPersonalizedFeed = (
   allPosts: any[],
   userLocation: string | null,
+  userPrefs: typeof mockUserPreferences,
   limit: number = 20
 ): any[] => {
   const scoredPosts = allPosts
     .filter(post => !post.recentlyViewed) // Exclude recently viewed for the main feed
-    .map(post => ({
-      ...post,
-      score: calculateScore(post, userLocation),
-      isRecent: (new Date().getTime() - (post.createdAt instanceof Date ? post.createdAt : post.createdAt?.toDate ? post.createdAt.toDate() : new Date()).getTime()) / (1000 * 60 * 60) <= 48, // Within 48 hours for 'New' badge
-      isNearby: isNearby(post.location, userLocation) // Add nearby flag for badge
-    }))
+    .map(post => {
+        const nearby = isNearby(post.location, userLocation);
+        const recent = isRecent(post.createdAt);
+        const trending = isTrending(post);
+        return {
+        ...post,
+        score: calculateScore(post, userLocation, userPrefs),
+        isRecent: recent, // Flag for 'New' badge
+        isNearby: nearby, // Flag for 'Nearby' badge
+        isTrending: trending, // Flag for 'Trending' badge
+        };
+    })
     .sort((a, b) => {
         // Primary sort: score descending
         if (b.score !== a.score) {
@@ -228,96 +286,162 @@ export default function Home() {
   const [userFavorites, setUserFavorites] = useState<string[]>([]); // State for user's favorite IDs
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock data
+  const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Track firestore init state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [currentUserLocation, setCurrentUserLocation] = useState<string | null>(mockUserLocation); // Use mock location for now
+  const [currentUserLocation, setCurrentUserLocation] = useState<string | null>(null); // Start null
 
   // State for the different feed sections
   const [personalizedFeed, setPersonalizedFeed] = useState<any[]>([]);
   const [recentlyViewedPostings, setRecentlyViewedPostings] = useState<any[]>([]);
 
-  // --- Commented out Firestore fetching logic ---
-  /*
-   useEffect(() => {
+  // --- Fetching and processing logic ---
+  useEffect(() => {
     if (firestore) {
       setFirestoreInitialized(true);
     } else {
-      // ... Firestore initialization check ...
+      const timeoutId = setTimeout(() => {
+        if (firestore) {
+          setFirestoreInitialized(true);
+        } else {
+          console.error("Firestore still not initialized after delay.");
+          toast({ title: "Database Error", description: "Could not connect to the database.", variant: "destructive" });
+        }
+      }, 2000); // Wait 2 seconds
+      return () => clearTimeout(timeoutId);
     }
-  }, [toast]);
+  }, [toast]); // Removed firestore from dependency array to avoid loop if it becomes available later
+
+   useEffect(() => {
+    const fetchData = async () => {
+        setIsLoading(true);
+
+        // --- 1. Get User Context (Location & Favorites) ---
+        let fetchedUserLocation = mockUserLocation; // Default to mock
+        let fetchedUserFavorites: string[] = [];
+         // TODO: Replace with actual user profile/location fetching logic
+        // Example:
+        // if (user && firestoreInitialized) {
+        //   try {
+        //     const userDocRef = doc(firestore, 'users', user.uid);
+        //     const userDocSnap = await getDoc(userDocRef);
+        //     if (userDocSnap.exists()) {
+        //       const userData = userDocSnap.data();
+        //       fetchedUserLocation = userData.location || mockUserLocation; // Use Firestore location or fallback
+        //       fetchedUserFavorites = userData.favorites || [];
+        //     }
+        //   } catch (error) {
+        //     console.error("Error fetching user data:", error);
+        //     // Handle error, maybe use defaults
+        //   }
+        // }
+        setCurrentUserLocation(fetchedUserLocation);
+        setUserFavorites(fetchedUserFavorites);
+
+        // --- 2. Fetch Posts (Simulated with Mock Data for now) ---
+        // TODO: Replace mockPostings with actual Firestore query
+        // Example Firestore Query (replace with your actual collection/query):
+        // let fetchedPostings: any[] = [];
+        // if (firestoreInitialized) {
+        //   try {
+        //     const postingsRef = collection(firestore, 'postings');
+        //     // Add more sophisticated querying later (e.g., based on location indexing)
+        //     const q = query(postingsRef, orderBy('createdAt', 'desc'), limit(100)); // Fetch latest 100 for now
+        //     const querySnapshot = await getDocs(q);
+        //     fetchedPostings = querySnapshot.docs.map(doc => ({
+        //       id: doc.id,
+        //       ...doc.data(),
+        //       isFavorite: fetchedUserFavorites.includes(doc.id), // Check if favorited
+        //       // TODO: Add recentlyViewed flag based on user history
+        //     }));
+        //   } catch (error) {
+        //     console.error("Error fetching postings:", error);
+        //     toast({ title: "Error", description: "Could not load postings.", variant: "destructive" });
+        //   }
+        // } else {
+        //    fetchedPostings = mockPostings.map(p => ({...p, isFavorite: fetchedUserFavorites.includes(p.id)}));
+        // }
+
+        // Using mock data for now, adding isFavorite flag
+         let fetchedPostings = mockPostings.map(p => ({...p, isFavorite: fetchedUserFavorites.includes(p.id)}));
 
 
-  useEffect(() => {
-    // ... Firestore data fetching logic ...
-    // Inside fetchData, after getting posts and favs:
-    // const userLoc = await getUserLocationFromProfileOrDevice(); // Fetch actual user location
-    // setCurrentUserLocation(userLoc);
-    // const feed = getPersonalizedFeed(fetchedPostingsWithFavorites, userLoc); // Use the algorithm
-    // setPersonalizedFeed(feed);
-    // setRecentlyViewedPostings(fetchedPostingsWithFavorites.filter(p => p.recentlyViewed)); // Filter for recently viewed
+        // --- 3. Filter by Category (Client-side for now) ---
+        if (selectedCategory) {
+            fetchedPostings = fetchedPostings.filter(p => p.category?.toLowerCase() === selectedCategory);
+        }
 
-  }, [toast, authLoading, user, searchParams, firestoreInitialized]);
-  */
-  // --- End of commented out Firestore fetching logic ---
+        // --- 4. Apply OLX-like Feed Algorithm ---
+        // TODO: Get actual user preferences
+        const feed = getPersonalizedFeed(fetchedPostings, fetchedUserLocation, mockUserPreferences);
+        setPersonalizedFeed(feed);
 
-  // Apply algorithm to mock data on initial load and when category/location changes
-  useEffect(() => {
-    setIsLoading(true);
-    // Simulate fetching and processing
-    setTimeout(() => {
-      // Filter by category if selected
-      let filteredMockPosts = selectedCategory
-        ? mockPostings.filter(p => p.category?.toLowerCase() === selectedCategory)
-        : mockPostings;
-
-      // Apply OLX-like feed algorithm
-      const feed = getPersonalizedFeed(filteredMockPosts, currentUserLocation);
-      setPersonalizedFeed(feed);
-
-      // Sort recently viewed separately by date (no scoring needed here)
-      setRecentlyViewedPostings(filteredMockPosts.filter(p => p.recentlyViewed).sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : b.createdAt?.toDate ? b.createdAt.toDate() : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : a.createdAt?.toDate ? a.createdAt.toDate() : new Date()).getTime()));
-
-      setIsLoading(false);
-    }, 500); // Simulate network delay
-
-  }, [selectedCategory, currentUserLocation]); // Re-run when category or location changes
+        // --- 5. Separate Recently Viewed Posts ---
+         // TODO: Implement actual recently viewed logic
+         const recentViews = fetchedPostings.filter(p => p.recentlyViewed)
+             .sort((a, b) => (b.createdAt instanceof Date ? b.createdAt : b.createdAt?.toDate ? b.createdAt.toDate() : new Date()).getTime() - (a.createdAt instanceof Date ? a.createdAt : a.createdAt?.toDate ? a.createdAt.toDate() : new Date()).getTime());
+        setRecentlyViewedPostings(recentViews);
 
 
-  // Handle favoriting logic (Simulated for mock data)
+        setIsLoading(false);
+    };
+
+    // Fetch data when component mounts, user changes, category changes, or Firestore becomes ready
+     // Debounce or delay fetching if needed, especially on category change
+    fetchData();
+
+  }, [user, selectedCategory, firestoreInitialized, toast]); // Dependencies for fetching
+
+
+  // Handle favoriting logic (Client-side simulation + optimistic update)
   const handleToggleFavorite = async (postId: string) => {
     if (!user) {
         toast({ title: "Login Required", description: "Please log in to add favorites.", variant: "destructive" });
         return;
     }
-     // Optimistically update UI for mock data in both feeds
+     if (!firestoreInitialized) {
+        toast({ title: "Database Not Ready", description: "Please wait a moment and try again.", variant: "default" });
+        return;
+     }
+
+
     const isCurrentlyFavorite = userFavorites.includes(postId);
-    setPersonalizedFeed(prev =>
-      prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
-    );
-    setRecentlyViewedPostings(prev =>
-      prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
-    );
+
+    // Optimistically update UI state
     setUserFavorites(prevFavs =>
         isCurrentlyFavorite ? prevFavs.filter(id => id !== postId) : [...prevFavs, postId]
     );
+     setPersonalizedFeed(prev =>
+       prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
+     );
+     setRecentlyViewedPostings(prev =>
+       prev.map(p => p.id === postId ? { ...p, isFavorite: !isCurrentlyFavorite } : p)
+     );
 
-    toast({
-      description: !isCurrentlyFavorite ? "Added to favorites!" : "Removed from favorites.",
-    });
 
-    // Simulate Firestore update (remove in final version)
-    console.log(`Simulating favorite toggle for post ${postId}. New state: ${!isCurrentlyFavorite}`);
-
-    // In real app, keep the try/catch and Firestore update logic here
-    /*
-     try {
-         const fs = ensureFirestoreInitialized();
-         const userDocRef = doc(fs, 'users', user.uid);
-        // ... Firestore update logic ...
+    // Update Firestore
+    try {
+        const userDocRef = doc(firestore, 'users', user.uid);
+        if (isCurrentlyFavorite) {
+            await updateDoc(userDocRef, { favorites: arrayRemove(postId) });
+            toast({ description: "Removed from favorites!" });
+        } else {
+            await updateDoc(userDocRef, { favorites: arrayUnion(postId) });
+            toast({ description: "Added to favorites!" });
+        }
     } catch (error: any) {
-         // Error handling and UI revert
+        console.error("Error updating favorites:", error);
+        toast({ title: "Error", description: "Could not update favorites.", variant: "destructive" });
+        // Revert optimistic UI update on error
+        setUserFavorites(prevFavs =>
+            isCurrentlyFavorite ? [...prevFavs, postId] : prevFavs.filter(id => id !== postId)
+        );
+         setPersonalizedFeed(prev =>
+           prev.map(p => p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p)
+         );
+         setRecentlyViewedPostings(prev =>
+           prev.map(p => p.id === postId ? { ...p, isFavorite: isCurrentlyFavorite } : p)
+         );
     }
-    */
   };
 
 
@@ -325,13 +449,16 @@ export default function Home() {
   useEffect(() => {
     if (authError && !authLoading) { // Check !authLoading to avoid toast during initial check
       console.error("Firebase Auth Hook Error:", authError);
+      // Optionally show a toast, but might be annoying on every page load if auth consistently fails
+      // toast({ title: "Authentication Error", description: "Could not verify user.", variant: "destructive" });
     }
   }, [authError, authLoading, toast]);
 
 
   return (
     <div className="relative min-h-full">
-      {isLoading && <LoadingSpinner className="fixed inset-0 bg-background/80 z-50" />} {/* Fixed position spinner */}
+      {/* Use LoadingSpinner component */}
+       {(isLoading || authLoading) && <LoadingSpinner className="fixed inset-0 bg-background/80 z-50" />}
 
       {/* Hero Section with Background Gradient */}
        <div className="text-center py-16 px-4 bg-gradient-to-b from-[--gradient-start] via-[--gradient-middle] to-[--gradient-end] dark:from-[--gradient-start] dark:via-[--gradient-middle] dark:to-[--gradient-end]">
@@ -389,6 +516,18 @@ export default function Home() {
              </div>
             </div>
         )}
+
+        {/* Loading/Empty State for Feed */}
+         {!isLoading && personalizedFeed.length === 0 && recentlyViewedPostings.length === 0 && (
+             <div className="text-center py-16 px-4">
+                 <p className="text-lg text-muted-foreground mb-4">
+                     {selectedCategory ? `No postings found in the '${selectedCategory}' category yet.` : "No postings found nearby. Be the first to post!"}
+                 </p>
+                 <Button asChild>
+                     <Link href="/post-need">Post Your Need/Offer</Link>
+                 </Button>
+             </div>
+         )}
 
 
         {/* How BharatNeed Works Section */}
@@ -467,11 +606,6 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
      let typeBadgeText = post.postType === 'need' ? 'Need' : 'Offer';
      let typeBadgeVariant: "default" | "destructive" | "secondary" | "outline" = post.postType === 'need' ? 'destructive' : 'default';
 
-     // Check if the post is recent (using the flag from the algorithm)
-     const isNew = post.isRecent;
-     // Check if the post is nearby (using the flag from the algorithm)
-     const isNearby = post.isNearby;
-
 
     return (
         <Card className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 group/card border rounded-lg bg-card"> {/* Added bg-card */}
@@ -485,7 +619,7 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
                         className="rounded-t-lg transition-transform duration-300 group-hover/card:scale-105" // Added hover effect
                         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         data-ai-hint="product service picture"
-                        priority={post.id.startsWith('mock')}
+                        priority={post.id.startsWith('mock')} // Prioritize mock images
                     />
                 </Link>
                  {/* Badges Overlay */}
@@ -493,22 +627,26 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
                     <Badge variant={typeBadgeVariant} className="text-xs py-0.5 px-1.5 rounded-sm shadow"> {/* Added shadow */}
                        {typeBadgeText}
                     </Badge>
-                    {isNew && !isRecentlyViewed && ( // Show 'New' badge only if recent and not in 'Recently Viewed'
-                         <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-green-500 text-white"> {/* Custom 'New' badge style */}
-                            New
-                        </Badge>
-                     )}
-                     {isNearby && !isRecentlyViewed && ( // Show 'Nearby' badge
-                         <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-blue-500 text-white"> {/* Custom 'Nearby' badge style */}
-                           <MapPin className="inline h-3 w-3 mr-0.5"/> Nearby
-                        </Badge>
-                     )}
-                     {/* Keep featured badge logic if needed */}
-                     {/* {post.featured && !isRecentlyViewed && (
-                        <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-yellow-400 text-yellow-900">
-                            Featured
-                        </Badge>
-                    )} */}
+                    {/* Show dynamic badges only if not in 'Recently Viewed' */}
+                    {!isRecentlyViewed && (
+                        <>
+                            {post.isRecent && (
+                                <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-green-500 text-white"> {/* Custom 'New' badge style */}
+                                    New
+                                </Badge>
+                            )}
+                            {post.isNearby && (
+                                <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-blue-500 text-white"> {/* Custom 'Nearby' badge style */}
+                                   <MapPin className="inline h-3 w-3 mr-0.5"/> Nearby
+                                </Badge>
+                            )}
+                             {post.isTrending && (
+                                 <Badge variant="secondary" className="text-xs py-0.5 px-1.5 rounded-sm shadow bg-orange-400 text-orange-900"> {/* Custom 'Trending' badge style */}
+                                     🔥 Trending
+                                 </Badge>
+                             )}
+                        </>
+                    )}
                 </div>
                 {/* Favorite Button Overlay */}
                 {user && (
@@ -544,5 +682,3 @@ function PostCard({ post, user, handleToggleFavorite, isRecentlyViewed = false }
         </Card>
     );
 }
-
-    
