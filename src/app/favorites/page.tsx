@@ -66,14 +66,12 @@ const mockFavoritesData: Posting[] = [
 
 export default function FavoritesPage() {
     const [user, authLoading, authError] = auth ? useAuthState(auth) : [null, true, new Error("Auth not initialized")];
-    const [favorites, setFavorites] = useState<Posting[]>(mockFavoritesData); // Initialize with mock data
-    const [isLoadingInitialData, setIsLoadingInitialData] = useState(false); // No initial loading needed for mock
+    const [favorites, setFavorites] = useState<Posting[]>([]); // Start empty, fetch real data
+    const [isLoadingInitialData, setIsLoadingInitialData] = useState(true); // Start loading initially
     const [loadingRemoveId, setLoadingRemoveId] = useState<string | null>(null); // State to track which item is being removed
     const { toast } = useToast();
-    const [firestoreInitialized, setFirestoreInitialized] = useState(true); // Assume initialized for mock
+    const [firestoreInitialized, setFirestoreInitialized] = useState(false); // Start uninitialized
 
-    // --- Commented out Firestore fetching logic ---
-    /*
      useEffect(() => {
          if (firestore) {
              setFirestoreInitialized(true);
@@ -95,6 +93,7 @@ export default function FavoritesPage() {
       const fetchFavorites = async () => {
           if (!user) {
              setIsLoadingInitialData(false);
+             setFavorites([]); // Clear favorites if user logs out
              return; // Exit if not logged in
           }
 
@@ -114,12 +113,16 @@ export default function FavoritesPage() {
               }
 
               // Fetch the actual posting details for each favorite ID
+              // Note: This fetches documents one by one. For large lists, consider fetching in batches or using 'in' query (max 30 IDs per query).
               const favoritePostingsPromises = favoriteIds.map(id => getDoc(doc(fs, 'postings', id)));
               const favoritePostingsSnaps = await Promise.all(favoritePostingsPromises);
               const fetchedFavorites = favoritePostingsSnaps
                   .map(snap => snap.exists() ? { id: snap.id, ...snap.data() } as Posting : null)
                   .filter((p): p is Posting => p !== null); // Type guard to filter out nulls
 
+              // Add dateFavorited info - Firestore doesn't store this directly with arrayUnion.
+              // You might need a subcollection for favorites if you need this timestamp reliably.
+              // For now, we'll omit or use createdAt as a placeholder.
               setFavorites(fetchedFavorites);
               console.log("Fetched favorite postings");
           } catch (error: any) {
@@ -127,7 +130,9 @@ export default function FavoritesPage() {
                if (error.message.includes("Firestore is not initialized")) {
                    toast({ title: "Database Error", description: "Could not load favorites.", variant: "destructive" });
                } else if (error.code === 'unavailable' || error.message.includes('offline')) {
-                 toast({ title: "Offline", description: "Could not load favorites. Displaying cached data if available.", variant: "default" });
+                 toast({ title: "Offline", description: "Could not load favorites. Please check your connection.", variant: "default" });
+                 // Potentially display mock/cached data if available
+                 // setFavorites(mockFavoritesData);
                } else {
                   toast({ title: "Error", description: "Could not load your favorites.", variant: "destructive" });
                }
@@ -152,38 +157,38 @@ export default function FavoritesPage() {
       }
 
   }, [user, authLoading, toast, authError, firestoreInitialized]);
-  */
-  // --- End of commented out Firestore fetching logic ---
 
 
-    // Simulated Remove Favorite Handler
     const handleRemoveFavorite = async (id: string) => {
          if (!user) {
              toast({ title: "Login Required", description: "Please log in to manage favorites.", variant: "destructive"});
              return;
          }
+          if (!firestoreInitialized) {
+             toast({ title: "Database Error", description: "Could not connect. Please try again.", variant: "destructive"});
+             return;
+         }
         setLoadingRemoveId(id); // Start loading for this specific item
-
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Optimistically update UI
         setFavorites(prev => prev.filter(ad => ad.id !== id));
-        toast({ title: "Removed", description: "Posting removed from favorites (simulated)." });
 
-        setLoadingRemoveId(null); // Stop loading
-
-        // In real app, keep the try/catch and Firestore update logic here
-        /*
         try {
             const fs = ensureFirestoreInitialized();
              const userDocRef = doc(fs, 'users', user.uid);
              await updateDoc(userDocRef, { favorites: arrayRemove(id) });
             console.log(`Removed favorite ${id} from Firestore`);
-            // UI update happens above
             toast({ title: "Removed", description: "Posting removed from favorites." });
         } catch (error: any) {
             console.error("Failed to remove favorite:", error);
+             // Revert optimistic update on error
+             setFavorites(prev => {
+                // This is complex: Need to refetch or insert the item back.
+                // Easiest might be to refetch all favorites or show an error and prompt retry.
+                // For simplicity, we'll just show an error here.
+                return prev; // Keep the optimistically updated state for now
+             });
+
              if (error.message.includes("Firestore is not initialized")) {
                  toast({ title: "Database Error", description: "Could not remove favorite.", variant: "destructive" });
              } else if (error.code === 'unavailable' || error.message.includes('offline')) {
@@ -191,15 +196,13 @@ export default function FavoritesPage() {
              } else {
                  toast({ title: "Error", description: "Could not remove favorite.", variant: "destructive" });
              }
-             // No need to revert optimistic update here, maybe refetch or let user retry
         } finally {
             setLoadingRemoveId(null); // Stop loading
         }
-        */
     };
 
-    // Show loading spinner only if auth is loading
-    if (authLoading) {
+    // Show loading spinner if auth or initial data is loading
+    if (authLoading || isLoadingInitialData) {
         return (
             <div className="flex justify-center items-center min-h-[60vh]">
                 <LoadingSpinner />
@@ -226,7 +229,8 @@ export default function FavoritesPage() {
             {favorites.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {favorites.map((ad) => {
-                        const dateFavoritedFormatted = ad.dateFavorited instanceof Date ? ad.dateFavorited.toLocaleDateString() : ad.dateFavorited?.toDate ? ad.dateFavorited.toDate().toLocaleDateString() : '';
+                        // Using createdAt as a placeholder for 'dateFavorited'
+                        const dateFavoritedFormatted = ad.createdAt instanceof Date ? ad.createdAt.toLocaleDateString() : ad.createdAt?.toDate ? ad.createdAt.toDate().toLocaleDateString() : '';
                         return (
                         <Card key={ad.id} className="overflow-hidden flex flex-col shadow-md hover:shadow-lg transition-shadow duration-200 relative">
                              {/* Show spinner overlay if this item is being removed */}
@@ -243,6 +247,7 @@ export default function FavoritesPage() {
                                     style={{ objectFit: 'cover' }}
                                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
                                     priority={ad.id.startsWith('mockFav')} // Prioritize loading mock images
+                                    data-ai-hint="favorite posting image"
                                 />
                             </Link>
                             <div className="p-4 flex flex-col flex-grow">
@@ -257,7 +262,8 @@ export default function FavoritesPage() {
                                 </Link>
                                 <div className="flex justify-between items-center mt-3 pt-2 border-t">
                                     <span className="text-xs text-muted-foreground">
-                                        {dateFavoritedFormatted ? `Favorited ${dateFavoritedFormatted}` : 'Favorited'}
+                                         {/* Using createdAt as placeholder for 'Favorited' date */}
+                                        {dateFavoritedFormatted ? `Added ${dateFavoritedFormatted}` : 'Favorited'}
                                      </span>
                                     <Button
                                         variant="ghost"
@@ -277,16 +283,12 @@ export default function FavoritesPage() {
                 </div>
             ) : (
                 <div className="text-center py-10">
-                    {isLoadingInitialData ? ( // Keep this check for potential real data loading later
-                         <LoadingSpinner />
-                    ) : (
-                         <>
-                            <p className="text-lg text-muted-foreground">You haven't favorited any ads yet.</p>
-                            <Button asChild className="mt-4">
-                                <Link href="/">Browse Ads</Link>
-                            </Button>
-                         </>
-                    )}
+                     <>
+                        <p className="text-lg text-muted-foreground">You haven't favorited any ads yet.</p>
+                        <Button asChild className="mt-4">
+                            <Link href="/">Browse Ads</Link>
+                        </Button>
+                     </>
                 </div>
             )}
         </div>
